@@ -1,4 +1,8 @@
-# EnterpriseInventory
+# Enterprise_Inventory_Order_Management
+
+Enterprise Inventory and Order Management System
+
+## Frontend (EnterpriseInventory)
 
 This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.2.3.
 
