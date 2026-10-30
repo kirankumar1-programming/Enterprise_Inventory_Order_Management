@@ -1,7 +1,8 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { InventoryApiService } from '../../core/services/inventory-api.service';
+import { AuthService } from '../../core/services/auth.service';
 import { DashboardSummary } from '../../models/app.models';
 
 @Component({
@@ -9,7 +10,7 @@ import { DashboardSummary } from '../../models/app.models';
   standalone: true,
   imports: [CommonModule, RouterModule],
   template: `
-    <div class="dashboard-page" *ngIf="summary; else loading">
+    <div class="dashboard-page" *ngIf="summary && !isLoading; else statusTpl">
       <!-- Page Header -->
       <div class="page-header">
         <div>
@@ -215,10 +216,26 @@ import { DashboardSummary } from '../../models/app.models';
       </div>
     </div>
 
-    <ng-template #loading>
-      <div class="loading-state">
+    <ng-template #statusTpl>
+      <div *ngIf="isLoading" class="loading-state">
         <div class="loading-spinner"></div>
         <p>Loading enterprise operations dashboard...</p>
+      </div>
+
+      <div *ngIf="!isLoading && errorMessage" class="error-state">
+        <div class="error-card">
+          <div class="error-icon">⚠️</div>
+          <h3>Dashboard Unavailable</h3>
+          <p class="error-msg">{{ errorMessage }}</p>
+          <div class="error-actions">
+            <button class="btn btn-primary" (click)="loadSummary()">
+              <span>🔄</span> Retry Loading
+            </button>
+            <button class="btn btn-secondary" (click)="auth.logout()">
+              <span>↪</span> Sign In Again
+            </button>
+          </div>
+        </div>
       </div>
     </ng-template>
   `,
@@ -372,20 +389,71 @@ import { DashboardSummary } from '../../models/app.models';
       animation: spin 0.8s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 400px;
+      padding: 2rem;
+    }
+    .error-card {
+      background: #ffffff;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 2.5rem;
+      max-width: 480px;
+      text-align: center;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+    }
+    .error-icon { font-size: 2.5rem; }
+    .error-card h3 { font-size: 1.25rem; color: var(--text-main); }
+    .error-msg { color: var(--text-muted); font-size: 0.875rem; line-height: 1.5; }
+    .error-actions { display: flex; gap: 0.75rem; margin-top: 0.5rem; }
   `]
 })
 export class DashboardComponent implements OnInit {
   summary: DashboardSummary | null = null;
+  isLoading = true;
+  errorMessage: string | null = null;
 
-  constructor(private api: InventoryApiService) {}
+  constructor(
+    private api: InventoryApiService,
+    public auth: AuthService,
+    private cdr: ChangeDetectorRef
+  ) {}
 
   ngOnInit() {
     this.loadSummary();
   }
 
   loadSummary() {
+    this.isLoading = true;
+    this.errorMessage = null;
+    this.cdr.markForCheck();
+
     this.api.getDashboardSummary().subscribe({
-      next: (data) => this.summary = data
+      next: (data) => {
+        this.summary = data;
+        this.isLoading = false;
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        this.isLoading = false;
+        if (err?.status === 401) {
+          this.errorMessage = 'Your authentication session has expired. Please sign in again to load operations dashboard data.';
+        } else if (err?.status === 0) {
+          this.errorMessage = 'Cannot connect to the backend API service at http://localhost:5000. Please verify the service is running.';
+        } else {
+          this.errorMessage = err?.error?.message || err?.message || 'Failed to load dashboard metrics. Please try again.';
+        }
+        this.cdr.markForCheck();
+      }
     });
   }
 

@@ -13,7 +13,12 @@ export class AuthService {
   private readonly USER_KEY = 'ent_inv_user';
 
   currentUser = signal<User | null>(this.getStoredUser());
-  isAuthenticated = computed(() => !!this.currentUser());
+  isAuthenticated = computed(() => {
+    const user = this.currentUser();
+    const token = this.getToken();
+    if (!user || !token) return false;
+    return !this.isTokenExpired(token);
+  });
 
   isAdmin = computed(() => this.currentUser()?.role === 'Admin');
   isManager = computed(() => this.currentUser()?.role === 'WarehouseManager');
@@ -43,7 +48,27 @@ export class AuthService {
     return localStorage.getItem(this.TOKEN_KEY);
   }
 
+  isTokenExpired(token?: string | null): boolean {
+    const t = token ?? this.getToken();
+    if (!t) return true;
+    try {
+      const parts = t.split('.');
+      if (parts.length !== 3) return true;
+      const payload = JSON.parse(atob(parts[1]));
+      if (!payload.exp) return false;
+      return payload.exp * 1000 < Date.now();
+    } catch {
+      return true;
+    }
+  }
+
   private getStoredUser(): User | null {
+    const token = this.getToken();
+    if (!token || this.isTokenExpired(token)) {
+      localStorage.removeItem(this.TOKEN_KEY);
+      localStorage.removeItem(this.USER_KEY);
+      return null;
+    }
     const raw = localStorage.getItem(this.USER_KEY);
     if (!raw) return null;
     try {
