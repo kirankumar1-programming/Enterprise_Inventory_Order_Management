@@ -6,7 +6,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { NotificationService } from '../../core/services/notification.service';
 import {
   Order, Warehouse, Product, InventoryItem,
-  PagedResult, OrderStatus
+  PagedResult, OrderStatus, ExtractedOrderDocument, ExtractedLineItem, SampleDocumentOption
 } from '../../models/app.models';
 
 @Component({
@@ -21,13 +21,25 @@ import {
           <h1>Customer Orders</h1>
           <p class="subtitle">Order placement with ACID stock reservation, status tracking, and stock-restoring cancellation</p>
         </div>
-        <button
-          *ngIf="auth.isAdmin() || auth.isSales() || auth.isManager()"
-          (click)="openCreateOrderModal()"
-          class="btn btn-primary"
-        >
-          <span>+</span> Create New Order
-        </button>
+        <div class="header-actions">
+          <button
+            *ngIf="auth.isAdmin() || auth.isSales() || auth.isManager()"
+            (click)="openAiImportModal()"
+            class="btn btn-ai-import"
+          >
+            <span class="ai-sparkle">✨</span>
+            <span>Import from Invoice / PO</span>
+            <span class="ai-badge-chip">Phase 1 AI</span>
+          </button>
+
+          <button
+            *ngIf="auth.isAdmin() || auth.isSales() || auth.isManager()"
+            (click)="openCreateOrderModal()"
+            class="btn btn-primary"
+          >
+            <span>+</span> Create New Order
+          </button>
+        </div>
       </div>
 
       <!-- Filters & Status Tabs -->
@@ -99,13 +111,13 @@ import {
                 <td>
                   <span class="code-badge font-bold">{{ o.orderNumber }}</span>
                 </td>
-                <td class="text-muted">{{ o.orderDate | date:'mediumDate' }}</td>
+                <td>{{ o.orderDate | date:'mediumDate' }}</td>
                 <td>
                   <div class="customer-name">{{ o.customerName }}</div>
-                  <small class="text-muted">{{ o.customerEmail }}</small>
+                  <div class="text-muted text-sm">{{ o.customerEmail }}</div>
                 </td>
                 <td>{{ o.warehouseName }}</td>
-                <td>{{ o.items.length }} items</td>
+                <td>{{ o.items?.length || 0 }} items</td>
                 <td><strong>{{ o.totalAmount | currency }}</strong></td>
                 <td>
                   <span class="badge" [ngClass]="getStatusBadgeClass(o.status)">
@@ -114,12 +126,12 @@ import {
                 </td>
                 <td>
                   <div class="action-buttons">
-                    <button class="btn btn-sm btn-secondary" (click)="viewOrder(o)">
+                    <button class="btn btn-sm btn-outline-secondary" (click)="viewOrder(o)">
                       Details
                     </button>
                     <button
                       *ngIf="(o.status === 1 || o.status === 2) && (auth.isAdmin() || auth.isSales() || auth.isManager())"
-                      class="btn btn-sm btn-danger"
+                      class="btn btn-sm btn-outline-danger"
                       (click)="cancelOrderPrompt(o)"
                     >
                       Cancel & Restore Stock
@@ -127,10 +139,9 @@ import {
                   </div>
                 </td>
               </tr>
-
-              <tr *ngIf="ordersPaged?.items?.length === 0">
-                <td colspan="8" class="text-center text-muted py-4">
-                  No customer orders found matching your search criteria.
+              <tr *ngIf="!ordersPaged?.items?.length">
+                <td colspan="8" class="text-center py-4 text-muted">
+                  No orders found matching the filter criteria.
                 </td>
               </tr>
             </tbody>
@@ -138,7 +149,7 @@ import {
         </div>
       </div>
 
-      <!-- CREATE ORDER MODAL -->
+      <!-- CREATE ORDER MODAL (STANDARD) -->
       <div *ngIf="showCreateModal" class="modal-backdrop">
         <div class="modal-dialog modal-dialog-lg">
           <div class="modal-header">
@@ -148,43 +159,40 @@ import {
 
           <form [formGroup]="orderForm" (ngSubmit)="submitOrder()">
             <div class="modal-body">
-              <!-- Customer Info -->
               <div class="form-row">
                 <div class="form-group flex-1">
                   <label class="form-label">Customer Name *</label>
-                  <input type="text" class="form-control" formControlName="customerName" placeholder="Acme Global Inc" />
+                  <input type="text" class="form-control" formControlName="customerName" placeholder="Acme Corp" />
                 </div>
                 <div class="form-group flex-1">
                   <label class="form-label">Customer Email *</label>
-                  <input type="email" class="form-control" formControlName="customerEmail" placeholder="orders@acmeglobal.com" />
-                </div>
-                <div class="form-group flex-1">
-                  <label class="form-label">Phone</label>
-                  <input type="text" class="form-control" formControlName="customerPhone" placeholder="+1-555-0199" />
+                  <input type="email" class="form-control" formControlName="customerEmail" placeholder="orders@acme.com" />
                 </div>
               </div>
 
               <div class="form-row">
-                <div class="form-group flex-2">
-                  <label class="form-label">Shipping Address *</label>
-                  <input type="text" class="form-control" formControlName="shippingAddress" placeholder="100 Commercial Way, Suite 400" />
-                </div>
                 <div class="form-group flex-1">
+                  <label class="form-label">Phone</label>
+                  <input type="text" class="form-control" formControlName="customerPhone" placeholder="+1-555-0199" />
+                </div>
+                <div class="form-group flex-2">
                   <label class="form-label">Fulfillment Warehouse *</label>
                   <select class="form-control" formControlName="warehouseId" (change)="onWarehouseChange()">
-                    <option value="" disabled>Select Warehouse</option>
                     <option *ngFor="let w of warehouses" [value]="w.id">{{ w.name }} ({{ w.code }})</option>
                   </select>
                 </div>
               </div>
 
-              <!-- Order Line Items -->
+              <div class="form-group">
+                <label class="form-label">Shipping Address *</label>
+                <textarea class="form-control" rows="2" formControlName="shippingAddress" placeholder="Street, City, State, ZIP"></textarea>
+              </div>
+
+              <!-- Line Items -->
               <div class="order-items-section">
                 <div class="items-header">
                   <h4>Order Items</h4>
-                  <button type="button" class="btn btn-sm btn-secondary" (click)="addItem()">
-                    + Add Item
-                  </button>
+                  <button type="button" class="btn btn-sm btn-secondary" (click)="addItem()">+ Add Product</button>
                 </div>
 
                 <div formArrayName="items" class="items-list">
@@ -192,7 +200,6 @@ import {
                     <div class="form-group flex-2">
                       <label class="form-label">Product</label>
                       <select class="form-control" formControlName="productId">
-                        <option value="" disabled>Select Product</option>
                         <option *ngFor="let p of products" [value]="p.id">
                           {{ p.name }} ({{ p.sku }}) - {{ p.price | currency }}
                         </option>
@@ -233,6 +240,257 @@ import {
               </button>
             </div>
           </form>
+        </div>
+      </div>
+
+      <!-- AI DOCUMENT INGESTION MODAL (PHASE 1) -->
+      <div *ngIf="showAiImportModal" class="modal-backdrop">
+        <div class="modal-dialog modal-dialog-xl">
+          <div class="modal-header ai-modal-header">
+            <div class="ai-modal-branding">
+              <div class="ai-modal-icon">🤖</div>
+              <div>
+                <h3>AI Document Ingestion & Order Intake</h3>
+                <span class="ai-modal-subtitle">Phase 1 • OCR & Multimodal Extraction with Automatic Catalog Reconciliation</span>
+              </div>
+            </div>
+            <button class="btn-close" (click)="closeModals()">×</button>
+          </div>
+
+          <div class="modal-body">
+            <!-- Step 1: Upload or Choose Sample -->
+            <div *ngIf="!stagedDoc && !isIngesting" class="ai-upload-flow">
+              <!-- Drag & Drop Zone -->
+              <div
+                class="ai-dropzone"
+                (dragover)="onDragOver($event)"
+                (dragleave)="onDragLeave($event)"
+                (drop)="onFileDrop($event)"
+                [class.drag-over]="isDraggingOver"
+              >
+                <div class="dropzone-icon">📄</div>
+                <h4>Drag & Drop Invoice, PO or Packing Slip here</h4>
+                <p class="dropzone-hint">Supports PDF, PNG, JPG/JPEG documents up to 10MB</p>
+                <label class="btn btn-outline-primary upload-btn-label">
+                  Browse Files
+                  <input type="file" (change)="onFileSelected($event)" accept=".pdf,.png,.jpg,.jpeg,.txt,.csv" style="display:none" />
+                </label>
+              </div>
+
+              <!-- Quick One-Click Samples -->
+              <div class="demo-samples-section">
+                <div class="samples-title">
+                  <span>⚡ Quick Demo Samples (Test with Seeded Catalog & ACID Stock Deduction):</span>
+                </div>
+                <div class="samples-grid">
+                  <div
+                    *ngFor="let sample of sampleDocuments"
+                    class="sample-card"
+                    (click)="loadSampleDocument(sample.id)"
+                  >
+                    <div class="sample-top">
+                      <span class="sample-badge">{{ sample.documentType }}</span>
+                      <span class="sample-items-chip">{{ sample.itemCount }} items</span>
+                    </div>
+                    <div class="sample-name">{{ sample.title }}</div>
+                    <div class="sample-desc">{{ sample.description }}</div>
+                    <div class="sample-footer">
+                      <span>Client: <strong>{{ sample.issuer }}</strong></span>
+                      <span class="sample-cost">{{ sample.estimatedTotal | currency }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 2: Ingesting / Scanning State -->
+            <div *ngIf="isIngesting" class="ai-scanning-state">
+              <div class="scanner-wrap">
+                <div class="doc-sheet">
+                  <div class="scanner-laser"></div>
+                  <div class="doc-lines">
+                    <span class="line w-75"></span>
+                    <span class="line w-50"></span>
+                    <span class="line w-90"></span>
+                    <span class="line w-60"></span>
+                  </div>
+                </div>
+              </div>
+              <h4>Analyzing Document via AI Multimodal Pipeline...</h4>
+              <p class="scanning-sub">Extracting metadata, line items, and resolving against catalog products</p>
+              <div class="scanning-steps">
+                <div class="scan-step done">✓ Optical Character Recognition & Entity Identification</div>
+                <div class="scan-step active">⚡ Fuzzy SKU & Catalog Cross-Referencing</div>
+                <div class="scan-step">📦 Multi-Warehouse Stock Reservation Verification</div>
+              </div>
+            </div>
+
+            <!-- Step 3: Reconciled Review & Order Confirmation -->
+            <div *ngIf="stagedDoc && !isIngesting" class="ai-reconciliation-flow">
+              <!-- Document Overview Bar -->
+              <div class="doc-overview-bar">
+                <div class="overview-item">
+                  <span class="overview-label">Document Type</span>
+                  <span class="badge badge-info">{{ stagedDoc.documentType }}</span>
+                </div>
+                <div class="overview-item">
+                  <span class="overview-label">Document Ref #</span>
+                  <span class="code-badge font-bold">{{ stagedDoc.documentReferenceNumber }}</span>
+                </div>
+                <div class="overview-item">
+                  <span class="overview-label">AI Match Confidence</span>
+                  <span class="badge badge-success font-bold">✓ {{ (stagedDoc.overallConfidence * 100).toFixed(0) }}% Confidence</span>
+                </div>
+                <div class="overview-item flex-grow">
+                  <span class="overview-label">Target Fulfillment Hub</span>
+                  <select
+                    class="form-control form-control-sm"
+                    [(ngModel)]="stagedDoc.suggestedWarehouseId"
+                    (ngModelChange)="onStagedWarehouseChange()"
+                  >
+                    <option *ngFor="let w of warehouses" [ngValue]="w.id">{{ w.name }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Customer Information Grid -->
+              <div class="customer-staged-grid">
+                <div class="form-group">
+                  <label class="form-label">Customer Name</label>
+                  <input type="text" class="form-control" [(ngModel)]="stagedDoc.customerName" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Customer Email</label>
+                  <input type="email" class="form-control" [(ngModel)]="stagedDoc.customerEmail" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Phone</label>
+                  <input type="text" class="form-control" [(ngModel)]="stagedDoc.customerPhone" />
+                </div>
+                <div class="form-group flex-2">
+                  <label class="form-label">Shipping Address</label>
+                  <input type="text" class="form-control" [(ngModel)]="stagedDoc.shippingAddress" />
+                </div>
+              </div>
+
+              <!-- Line Items Table -->
+              <div class="items-table-header">
+                <h4>Reconciled Order Line Items ({{ stagedDoc.items.length }})</h4>
+                <button class="btn btn-sm btn-outline-secondary" (click)="addStagedItem()">+ Add Line Item</button>
+              </div>
+
+              <div class="table-responsive">
+                <table class="table staged-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 28%">Extracted Document Line</th>
+                      <th style="width: 30%">Matched Catalog Product</th>
+                      <th style="width: 10%">Quantity</th>
+                      <th style="width: 12%">Unit Price</th>
+                      <th style="width: 10%">Subtotal</th>
+                      <th style="width: 15%">Hub Stock</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr *ngFor="let itm of stagedDoc.items; let i = index">
+                      <td>
+                        <div class="extracted-desc">{{ itm.rawDescription }}</div>
+                        <span class="match-reason-badge">
+                          <span class="dot" [ngClass]="itm.matchConfidence >= 0.9 ? 'dot-green' : 'dot-yellow'"></span>
+                          {{ itm.matchReason }}
+                        </span>
+                      </td>
+                      <td>
+                        <select
+                          class="form-control form-control-sm"
+                          [(ngModel)]="itm.matchedProductId"
+                          (ngModelChange)="onStagedProductChange(itm)"
+                        >
+                          <option *ngFor="let p of products" [ngValue]="p.id">
+                            [{{ p.sku }}] {{ p.name }} - {{ p.price | currency }}
+                          </option>
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="1"
+                          class="form-control form-control-sm"
+                          [(ngModel)]="itm.quantity"
+                          (ngModelChange)="recalcStagedTotals()"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          class="form-control form-control-sm"
+                          [(ngModel)]="itm.unitPrice"
+                          (ngModelChange)="recalcStagedTotals()"
+                        />
+                      </td>
+                      <td>
+                        <strong>{{ (itm.quantity * itm.unitPrice) | currency }}</strong>
+                      </td>
+                      <td>
+                        <span class="badge" [ngClass]="itm.warehouseAvailableStock >= itm.quantity ? 'badge-success' : 'badge-danger'">
+                          {{ itm.warehouseAvailableStock }} units available
+                        </span>
+                      </td>
+                      <td>
+                        <button class="btn-remove-line" (click)="removeStagedItem(i)">✕</button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Financials Footer -->
+              <div class="staged-financials-bar">
+                <div class="notes-hint">
+                  <span class="hint-icon">💡</span>
+                  <span>Confirming will atomically deduct stock and write an immutable audit trail entry.</span>
+                </div>
+                <div class="financials-totals">
+                  <div class="total-row">
+                    <span>Items Subtotal:</span>
+                    <span>{{ stagedDoc.subTotal | currency }}</span>
+                  </div>
+                  <div class="total-row">
+                    <span>Tax (8.25%):</span>
+                    <span>{{ stagedDoc.tax | currency }}</span>
+                  </div>
+                  <div class="total-row grand-total">
+                    <span>Order Total:</span>
+                    <span class="text-primary">{{ stagedDoc.totalAmount | currency }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button
+              *ngIf="stagedDoc"
+              type="button"
+              class="btn btn-secondary mr-auto"
+              (click)="stagedDoc = null"
+            >
+              ← Rescan / Choose Another Document
+            </button>
+            <button type="button" class="btn btn-secondary" (click)="closeModals()">Cancel</button>
+            <button
+              *ngIf="stagedDoc"
+              type="button"
+              class="btn btn-primary"
+              [disabled]="isSubmitting || !stagedDoc.items.length"
+              (click)="confirmStagedOrder()"
+            >
+              {{ isSubmitting ? 'Reserving Stock & Placing Order...' : 'Confirm & Create Order' }}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -337,6 +595,37 @@ import {
     .page-container { display: flex; flex-direction: column; gap: 1.5rem; }
     .page-header { display: flex; justify-content: space-between; align-items: center; }
     .subtitle { color: var(--text-muted); font-size: 0.875rem; margin-top: 0.25rem; }
+    .header-actions { display: flex; align-items: center; gap: 0.75rem; }
+
+    .btn-ai-import {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 0.6rem 1.15rem;
+      border-radius: var(--radius-sm);
+      font-weight: 700;
+      font-size: 0.875rem;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .btn-ai-import:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(79, 70, 229, 0.45);
+    }
+    .ai-sparkle { font-size: 1rem; }
+    .ai-badge-chip {
+      background: rgba(255, 255, 255, 0.25);
+      font-size: 0.6875rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 9999px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
 
     .toolbar-card { display: flex; flex-direction: column; gap: 1rem; padding: 1.25rem; }
     .status-pills { display: flex; flex-wrap: wrap; gap: 0.5rem; }
@@ -368,6 +657,7 @@ import {
     .form-row { display: flex; gap: 1rem; }
     .flex-1 { flex: 1; }
     .flex-2 { flex: 2; }
+    .flex-grow { flex-grow: 1; }
 
     .order-items-section {
       margin-top: 1.5rem;
@@ -445,6 +735,315 @@ import {
       font-weight: 600;
     }
     .btn-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); }
+
+    /* AI Document Ingestion Modal Styles */
+    .modal-dialog-xl {
+      max-width: 960px;
+      width: 95%;
+    }
+    .ai-modal-header {
+      background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+      color: #fff;
+    }
+    .ai-modal-header h3 {
+      color: #ffffff;
+      margin: 0;
+      font-size: 1.25rem;
+    }
+    .ai-modal-branding {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+    }
+    .ai-modal-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .ai-modal-subtitle {
+      font-size: 0.785rem;
+      color: #c7d2fe;
+    }
+
+    .ai-dropzone {
+      border: 2px dashed #818cf8;
+      background: #f5f3ff;
+      border-radius: 12px;
+      padding: 2.5rem 1.5rem;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .ai-dropzone:hover, .ai-dropzone.drag-over {
+      background: #ede9fe;
+      border-color: #6366f1;
+    }
+    .dropzone-icon { font-size: 2.5rem; }
+    .ai-dropzone h4 { margin: 0; font-size: 1.15rem; color: #1e1b4b; }
+    .dropzone-hint { margin: 0; font-size: 0.8125rem; color: #64748b; }
+    .upload-btn-label { cursor: pointer; margin-top: 0.5rem; }
+
+    .demo-samples-section {
+      margin-top: 2rem;
+    }
+    .samples-title {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      color: #475569;
+      text-transform: uppercase;
+      margin-bottom: 0.85rem;
+      letter-spacing: 0.03em;
+    }
+    .samples-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1rem;
+    }
+    .sample-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 1rem;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      transition: all 0.2s;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+    .sample-card:hover {
+      border-color: #6366f1;
+      transform: translateY(-2px);
+      box-shadow: 0 8px 16px -4px rgba(99, 102, 241, 0.2);
+    }
+    .sample-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .sample-badge {
+      font-size: 0.6875rem;
+      font-weight: 700;
+      padding: 0.2rem 0.5rem;
+      background: #eff6ff;
+      color: #2563eb;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+    .sample-items-chip {
+      font-size: 0.6875rem;
+      color: #64748b;
+      font-weight: 600;
+    }
+    .sample-name {
+      font-weight: 700;
+      font-size: 0.9375rem;
+      color: #0f172a;
+    }
+    .sample-desc {
+      font-size: 0.8125rem;
+      color: #64748b;
+      line-height: 1.4;
+      flex: 1;
+    }
+    .sample-footer {
+      margin-top: 0.5rem;
+      padding-top: 0.5rem;
+      border-top: 1px dashed #e2e8f0;
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.785rem;
+    }
+    .sample-cost {
+      font-weight: 700;
+      color: #10b981;
+    }
+
+    /* Scanning State */
+    .ai-scanning-state {
+      padding: 3rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 0.75rem;
+    }
+    .scanner-wrap {
+      position: relative;
+      width: 120px;
+      height: 140px;
+      margin-bottom: 1rem;
+    }
+    .doc-sheet {
+      width: 100%;
+      height: 100%;
+      background: #ffffff;
+      border: 2px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+      position: relative;
+      overflow: hidden;
+    }
+    .scanner-laser {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: #6366f1;
+      box-shadow: 0 0 10px #6366f1, 0 0 20px #818cf8;
+      animation: scanAnim 1.6s infinite ease-in-out;
+    }
+    @keyframes scanAnim {
+      0% { top: 0; }
+      50% { top: calc(100% - 3px); }
+      100% { top: 0; }
+    }
+    .doc-lines { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+    .line { height: 6px; background: #e2e8f0; border-radius: 3px; }
+    .w-75 { width: 75%; }
+    .w-50 { width: 50%; }
+    .w-90 { width: 90%; }
+    .w-60 { width: 60%; }
+
+    .scanning-steps {
+      margin-top: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      text-align: left;
+    }
+    .scan-step {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: #94a3b8;
+    }
+    .scan-step.done { color: #10b981; }
+    .scan-step.active { color: #4f46e5; }
+
+    /* Reconciled Staged Review */
+    .doc-overview-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.25rem;
+      background: #f8fafc;
+      padding: 1rem 1.25rem;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+      margin-bottom: 1.25rem;
+      align-items: center;
+    }
+    .overview-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .overview-label {
+      font-size: 0.6875rem;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+    }
+
+    .customer-staged-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .items-table-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+
+    .staged-table td {
+      vertical-align: middle;
+    }
+    .extracted-desc {
+      font-weight: 600;
+      font-size: 0.8125rem;
+      color: #1e293b;
+      margin-bottom: 0.25rem;
+    }
+    .match-reason-badge {
+      font-size: 0.6875rem;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .dot { width: 6px; height: 6px; border-radius: 50%; }
+    .dot-green { background: #10b981; }
+    .dot-yellow { background: #f59e0b; }
+
+    .btn-remove-line {
+      background: #fee2e2;
+      border: none;
+      color: var(--danger);
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .btn-remove-line:hover { background: var(--danger); color: #fff; }
+
+    .staged-financials-bar {
+      margin-top: 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding: 1rem 1.25rem;
+      background: #f8fafc;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+    }
+    .notes-hint {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8125rem;
+      color: #64748b;
+      max-width: 50%;
+    }
+    .financials-totals {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      min-width: 240px;
+    }
+    .total-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.875rem;
+      color: #475569;
+    }
+    .grand-total {
+      font-size: 1.15rem;
+      font-weight: 800;
+      border-top: 1px dashed #cbd5e1;
+      padding-top: 0.4rem;
+      color: #0f172a;
+    }
   `]
 })
 export class OrdersListComponent implements OnInit {
@@ -459,9 +1058,16 @@ export class OrdersListComponent implements OnInit {
 
   showCreateModal = false;
   showDetailsModal = false;
+  showAiImportModal = false;
   selectedOrder: Order | null = null;
   orderForm: FormGroup;
   isSubmitting = false;
+
+  // AI Document Ingestion State (Phase 1)
+  sampleDocuments: SampleDocumentOption[] = [];
+  stagedDoc: ExtractedOrderDocument | null = null;
+  isIngesting = false;
+  isDraggingOver = false;
 
   constructor(
     private api: InventoryApiService,
@@ -487,6 +1093,7 @@ export class OrdersListComponent implements OnInit {
   ngOnInit() {
     this.loadLookups();
     this.loadOrders();
+    this.loadSampleDocuments();
   }
 
   loadLookups() {
@@ -497,6 +1104,16 @@ export class OrdersListComponent implements OnInit {
     this.api.getProducts({ pageSize: 100 }).subscribe(res => {
       this.products = res.items;
       this.cdr.markForCheck();
+    });
+  }
+
+  loadSampleDocuments() {
+    this.api.getDocumentSamples().subscribe({
+      next: (samples) => {
+        this.sampleDocuments = samples;
+        this.cdr.markForCheck();
+      },
+      error: () => {}
     });
   }
 
@@ -521,6 +1138,10 @@ export class OrdersListComponent implements OnInit {
     this.selectedStatus = status;
     this.loadOrders();
   }
+
+  // ============================================
+  // Standard Order Modal
+  // ============================================
 
   openCreateOrderModal() {
     this.orderForm.reset({
@@ -559,6 +1180,7 @@ export class OrdersListComponent implements OnInit {
       res.items.forEach(inv => {
         this.warehouseInventoryMap.set(inv.productId, inv.availableQuantity);
       });
+      this.cdr.markForCheck();
     });
   }
 
@@ -582,7 +1204,6 @@ export class OrdersListComponent implements OnInit {
   submitOrder() {
     if (this.orderForm.invalid) return;
 
-    // Pre-validate UI quantities against available stock
     for (const ctrl of this.itemsArray.controls) {
       const pId = ctrl.get('productId')?.value;
       const qty = ctrl.get('quantity')?.value;
@@ -606,6 +1227,209 @@ export class OrdersListComponent implements OnInit {
     });
   }
 
+  // ============================================
+  // Phase 1: AI Document Ingestion Workflow
+  // ============================================
+
+  openAiImportModal() {
+    this.stagedDoc = null;
+    this.isIngesting = false;
+    this.showAiImportModal = true;
+  }
+
+  onDragOver(e: DragEvent) {
+    e.preventDefault();
+    this.isDraggingOver = true;
+  }
+
+  onDragLeave(e: DragEvent) {
+    e.preventDefault();
+    this.isDraggingOver = false;
+  }
+
+  onFileDrop(e: DragEvent) {
+    e.preventDefault();
+    this.isDraggingOver = false;
+    if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+      this.processUploadedFile(e.dataTransfer.files[0]);
+    }
+  }
+
+  onFileSelected(e: Event) {
+    const target = e.target as HTMLInputElement;
+    if (target.files && target.files.length > 0) {
+      this.processUploadedFile(target.files[0]);
+    }
+  }
+
+  processUploadedFile(file: File) {
+    this.isIngesting = true;
+    this.cdr.markForCheck();
+
+    this.api.ingestDocument({ file, warehouseId: this.warehouses[0]?.id }).subscribe({
+      next: (doc) => {
+        this.isIngesting = false;
+        this.stagedDoc = doc;
+        this.onStagedWarehouseChange();
+        this.notify.success('Document Parsed', `Extracted ${doc.items.length} items from ${file.name}`);
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.isIngesting = false;
+        this.notify.danger('Extraction Failed', 'Failed to parse document. Please check the file format.');
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  loadSampleDocument(sampleId: string) {
+    this.isIngesting = true;
+    this.cdr.markForCheck();
+
+    this.api.ingestDocument({ sampleId, warehouseId: this.warehouses[0]?.id }).subscribe({
+      next: (doc) => {
+        this.isIngesting = false;
+        this.stagedDoc = doc;
+        this.onStagedWarehouseChange();
+        this.notify.success('Sample Loaded', `Loaded sample document with ${doc.items.length} line items.`);
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.isIngesting = false;
+        this.notify.danger('Load Error', 'Could not load sample document.');
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  onStagedWarehouseChange() {
+    if (!this.stagedDoc) return;
+    const whId = this.stagedDoc.suggestedWarehouseId;
+
+    this.api.getInventories({ warehouseId: whId, pageSize: 100 }).subscribe(res => {
+      const invMap = new Map<number, number>();
+      res.items.forEach(inv => invMap.set(inv.productId, inv.availableQuantity));
+
+      if (this.stagedDoc) {
+        this.stagedDoc.items.forEach(item => {
+          if (item.matchedProductId) {
+            item.warehouseAvailableStock = invMap.get(item.matchedProductId) || 0;
+            item.isStockSufficient = item.warehouseAvailableStock >= item.quantity;
+          }
+        });
+      }
+      this.cdr.markForCheck();
+    });
+  }
+
+  onStagedProductChange(item: ExtractedLineItem) {
+    const prod = this.products.find(p => p.id === item.matchedProductId);
+    if (prod) {
+      item.matchedProductName = prod.name;
+      item.matchedProductSku = prod.sku;
+      item.unitPrice = prod.price;
+      item.matchReason = `Manual Selection: ${prod.sku}`;
+      item.matchConfidence = 1.0;
+    }
+    this.onStagedWarehouseChange();
+    this.recalcStagedTotals();
+  }
+
+  addStagedItem() {
+    if (!this.stagedDoc || !this.products.length) return;
+    const defaultProd = this.products[0];
+    this.stagedDoc.items.push({
+      rawDescription: defaultProd.name,
+      extractedSku: defaultProd.sku,
+      quantity: 1,
+      unitPrice: defaultProd.price,
+      subTotal: defaultProd.price,
+      matchedProductId: defaultProd.id,
+      matchedProductName: defaultProd.name,
+      matchedProductSku: defaultProd.sku,
+      matchConfidence: 1.0,
+      matchReason: 'Custom Item Added',
+      warehouseAvailableStock: 0,
+      isStockSufficient: true
+    });
+    this.onStagedWarehouseChange();
+    this.recalcStagedTotals();
+  }
+
+  removeStagedItem(index: number) {
+    if (!this.stagedDoc) return;
+    this.stagedDoc.items.splice(index, 1);
+    this.recalcStagedTotals();
+  }
+
+  recalcStagedTotals() {
+    if (!this.stagedDoc) return;
+    let sub = 0;
+    this.stagedDoc.items.forEach(i => {
+      i.subTotal = i.quantity * i.unitPrice;
+      sub += i.subTotal;
+    });
+    this.stagedDoc.subTotal = sub;
+    this.stagedDoc.tax = Math.round(sub * 0.0825 * 100) / 100;
+    this.stagedDoc.totalAmount = this.stagedDoc.subTotal + this.stagedDoc.tax;
+    this.cdr.markForCheck();
+  }
+
+  confirmStagedOrder() {
+    if (!this.stagedDoc) return;
+
+    if (!this.stagedDoc.customerName || !this.stagedDoc.customerEmail || !this.stagedDoc.shippingAddress) {
+      this.notify.warning('Validation Required', 'Please ensure customer name, email, and shipping address are filled.');
+      return;
+    }
+
+    if (!this.stagedDoc.items.length) {
+      this.notify.warning('Validation Required', 'Order must contain at least one line item.');
+      return;
+    }
+
+    // Verify stock availability
+    for (const itm of this.stagedDoc.items) {
+      if (!itm.matchedProductId) {
+        this.notify.danger('Unmatched Item', `Please select a catalog product for '${itm.rawDescription}'.`);
+        return;
+      }
+      if (itm.quantity > itm.warehouseAvailableStock) {
+        this.notify.danger('Insufficient Stock', `Requested ${itm.quantity} of '${itm.matchedProductName}', but only ${itm.warehouseAvailableStock} available.`);
+        return;
+      }
+    }
+
+    this.isSubmitting = true;
+    const orderPayload = {
+      customerName: this.stagedDoc.customerName,
+      customerEmail: this.stagedDoc.customerEmail,
+      customerPhone: this.stagedDoc.customerPhone,
+      shippingAddress: this.stagedDoc.shippingAddress,
+      warehouseId: this.stagedDoc.suggestedWarehouseId,
+      items: this.stagedDoc.items.map(i => ({
+        productId: i.matchedProductId!,
+        quantity: i.quantity
+      }))
+    };
+
+    this.api.createOrder(orderPayload).subscribe({
+      next: (created) => {
+        this.isSubmitting = false;
+        this.notify.success('Order Created via AI Ingestion', `Order ${created.orderNumber} successfully booked and stock reserved.`);
+        this.closeModals();
+        this.loadOrders();
+      },
+      error: () => {
+        this.isSubmitting = false;
+      }
+    });
+  }
+
+  // ============================================
+  // General Modal Actions
+  // ============================================
+
   viewOrder(order: Order) {
     this.selectedOrder = order;
     this.showDetailsModal = true;
@@ -625,7 +1449,7 @@ export class OrdersListComponent implements OnInit {
 
   cancelOrderPrompt(order: Order) {
     const reason = prompt(`Reason for cancelling order ${order.orderNumber}? (Stock will be automatically returned to inventory):`);
-    if (reason === null) return; // user cancelled prompt
+    if (reason === null) return;
 
     this.api.cancelOrder(order.id, reason || 'Customer cancellation').subscribe({
       next: (cancelled) => {
@@ -639,6 +1463,8 @@ export class OrdersListComponent implements OnInit {
   closeModals() {
     this.showCreateModal = false;
     this.showDetailsModal = false;
+    this.showAiImportModal = false;
+    this.stagedDoc = null;
     this.selectedOrder = null;
   }
 

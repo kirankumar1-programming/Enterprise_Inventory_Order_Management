@@ -4,7 +4,12 @@ import { Observable } from 'rxjs';
 import {
   Product, CreateProductRequest, Category, Supplier, Warehouse,
   InventoryItem, LowStockAlert, StockAdjustmentRequest, StockTransferRequest,
-  StockMovement, Order, CreateOrderRequest, DashboardSummary, AuditLog, PagedResult
+  StockMovement, Order, CreateOrderRequest, DashboardSummary, AuditLog, PagedResult,
+  ProductForecastSummary, RestockRecommendation, OverstockAlert,
+  DuplicateCheckResponse, CategorySuggestion, CatalogAuditReport, RestockPoDraft,
+  ExtractedOrderDocument, SampleDocumentOption, CopilotQueryResponse,
+  AnomalyRadarReport, ResolveAnomalyRequest, SupplierIntelligenceReport,
+  AutonomousReorderPolicy, TogglePolicyRequest
 } from '../../models/app.models';
 
 @Injectable({
@@ -164,4 +169,103 @@ export class InventoryApiService {
   }): Observable<PagedResult<AuditLog>> {
     return this.http.get<PagedResult<AuditLog>>(`${this.baseUrl}/audit`, { params: this.toHttpParams(params) });
   }
+
+  // 7. Phase 2: AI Forecasting & Dynamic Restock
+  getForecastSummary(warehouseId?: number): Observable<ProductForecastSummary> {
+    return this.http.get<ProductForecastSummary>(`${this.baseUrl}/inventory/forecasting/summary`, {
+      params: this.toHttpParams({ warehouseId })
+    });
+  }
+
+  getRestockRecommendations(warehouseId?: number): Observable<RestockRecommendation[]> {
+    return this.http.get<RestockRecommendation[]>(`${this.baseUrl}/inventory/forecasting/recommendations`, {
+      params: this.toHttpParams({ warehouseId })
+    });
+  }
+
+  getOverstockAlerts(warehouseId?: number): Observable<OverstockAlert[]> {
+    return this.http.get<OverstockAlert[]>(`${this.baseUrl}/inventory/forecasting/overstock`, {
+      params: this.toHttpParams({ warehouseId })
+    });
+  }
+
+  getProductRunway(productId: number, warehouseId?: number): Observable<RestockRecommendation> {
+    return this.http.get<RestockRecommendation>(`${this.baseUrl}/inventory/forecasting/product/${productId}`, {
+      params: this.toHttpParams({ warehouseId })
+    });
+  }
+
+  generateRestockPoDraft(request: { warehouseId?: number; productIds?: number[] }): Observable<RestockPoDraft> {
+    return this.http.post<RestockPoDraft>(`${this.baseUrl}/inventory/forecasting/generate-po-draft`, request);
+  }
+
+  // 8. Phase 2: AI Catalog Intelligence
+  detectDuplicateProducts(request: {
+    name: string;
+    sku?: string;
+    description?: string;
+    currentProductId?: number;
+  }): Observable<DuplicateCheckResponse> {
+    return this.http.post<DuplicateCheckResponse>(`${this.baseUrl}/products/intelligence/detect-duplicates`, request);
+  }
+
+  suggestCategory(request: { name: string; description?: string }): Observable<CategorySuggestion> {
+    return this.http.post<CategorySuggestion>(`${this.baseUrl}/products/intelligence/suggest-category`, request);
+  }
+
+  getCatalogAuditReport(): Observable<CatalogAuditReport> {
+    return this.http.get<CatalogAuditReport>(`${this.baseUrl}/products/intelligence/audit`);
+  }
+
+  // 9. Phase 1: AI Document Ingestion & Conversational Copilot
+  getDocumentSamples(): Observable<SampleDocumentOption[]> {
+    return this.http.get<SampleDocumentOption[]>(`${this.baseUrl}/ai/document-samples`);
+  }
+
+  ingestDocument(options: { file?: File; sampleId?: string; warehouseId?: number }): Observable<ExtractedOrderDocument> {
+    const formData = new FormData();
+    if (options.file) {
+      formData.append('file', options.file, options.file.name);
+    }
+    if (options.sampleId) {
+      formData.append('sampleId', options.sampleId);
+    }
+    if (options.warehouseId) {
+      formData.append('warehouseId', options.warehouseId.toString());
+    }
+    return this.http.post<ExtractedOrderDocument>(`${this.baseUrl}/ai/ingest-document`, formData);
+  }
+
+  queryCopilot(query: string, currentPage?: string, warehouseId?: number): Observable<CopilotQueryResponse> {
+    return this.http.post<CopilotQueryResponse>(`${this.baseUrl}/ai/copilot/query`, {
+      query,
+      currentPage,
+      warehouseId
+    });
+  }
+
+  // ==========================================
+  // Phase 3: Autonomous Operations & Intelligence
+  // ==========================================
+
+  getAnomalyRadarReport(): Observable<AnomalyRadarReport> {
+    return this.http.get<AnomalyRadarReport>(`${this.baseUrl}/audit/anomalies/radar`);
+  }
+
+  resolveAnomaly(request: ResolveAnomalyRequest): Observable<{ success: boolean; message: string }> {
+    return this.http.post<{ success: boolean; message: string }>(`${this.baseUrl}/audit/anomalies/resolve`, request);
+  }
+
+  getSupplierScorecards(): Observable<SupplierIntelligenceReport> {
+    return this.http.get<SupplierIntelligenceReport>(`${this.baseUrl}/suppliers/intelligence/scorecards`);
+  }
+
+  getAutonomousPolicies(): Observable<AutonomousReorderPolicy[]> {
+    return this.http.get<AutonomousReorderPolicy[]>(`${this.baseUrl}/suppliers/intelligence/autonomous-policies`);
+  }
+
+  toggleAutonomousPolicy(request: TogglePolicyRequest): Observable<{ success: boolean; enabled: boolean }> {
+    return this.http.post<{ success: boolean; enabled: boolean }>(`${this.baseUrl}/suppliers/intelligence/toggle-policy`, request);
+  }
 }
+

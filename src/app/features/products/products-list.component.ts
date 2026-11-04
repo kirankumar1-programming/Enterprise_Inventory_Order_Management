@@ -1,11 +1,12 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import { Subscription, Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 import { InventoryApiService } from '../../core/services/inventory-api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { NotificationService } from '../../core/services/notification.service';
-import { Product, Category, Supplier, PagedResult } from '../../models/app.models';
+import { Product, Category, Supplier, PagedResult, DuplicateProductMatch, CategorySuggestion, CatalogAuditReport } from '../../models/app.models';
 
 @Component({
   selector: 'app-products-list',
@@ -19,9 +20,16 @@ import { Product, Category, Supplier, PagedResult } from '../../models/app.model
           <h1>Product Catalog</h1>
           <p class="subtitle">Manage enterprise master products, SKU identifiers, pricing, and reorder levels</p>
         </div>
-        <button *ngIf="auth.isAdmin() || auth.isManager()" (click)="openAddModal()" class="btn btn-primary">
-          <span>+</span> Add Product
-        </button>
+        <div class="d-flex gap-2">
+          <button (click)="openAuditModal()" class="btn btn-ai-gradient">
+            <span>✨</span>
+            <span>AI Catalog Deduplication</span>
+            <span class="ai-badge-chip phase2">Phase 2 AI</span>
+          </button>
+          <button *ngIf="auth.isAdmin() || auth.isManager()" (click)="openAddModal()" class="btn btn-primary">
+            <span>+</span> Add Product
+          </button>
+        </div>
       </div>
 
       <!-- Filters & Search Toolbar -->
@@ -208,19 +216,46 @@ import { Product, Category, Supplier, PagedResult } from '../../models/app.model
                 </div>
 
                 <div class="form-group flex-2">
-                  <label class="form-label">Product Name</label>
+                  <div class="d-flex justify-between align-center">
+                    <div class="d-flex align-center gap-2">
+                      <label class="form-label m-0">Product Name</label>
+                      <span class="ai-badge-chip phase2">Phase 2 AI Duplicate Check</span>
+                    </div>
+                    <span *ngIf="isCheckingDuplicates" class="text-sm text-muted">Checking duplicates...</span>
+                  </div>
                   <input type="text" class="form-control" formControlName="name" placeholder="Full descriptive product name" />
                   <div *ngIf="pf['name'].touched && pf['name'].invalid" class="invalid-feedback">Product name is required.</div>
+
+                  <!-- AI Duplicate Warning Notification -->
+                  <div *ngIf="duplicateMatches.length > 0" class="duplicate-warning-box mt-2">
+                    <div class="font-bold text-warning text-sm">⚠️ Similar Catalog Items Detected:</div>
+                    <div *ngFor="let m of duplicateMatches" class="duplicate-item text-sm">
+                      • <strong>{{ m.name }}</strong> ({{ m.sku }}) - <span class="badge badge-warning">{{ m.similarityScore * 100 }}% match</span>: {{ m.matchReason }}
+                    </div>
+                  </div>
                 </div>
               </div>
 
               <div class="form-row">
                 <div class="form-group flex-1">
-                  <label class="form-label">Category</label>
+                  <div class="d-flex justify-between align-center">
+                    <label class="form-label">Category</label>
+                    <button
+                      type="button"
+                      class="btn-link-ai"
+                      (click)="suggestCategory()"
+                      [disabled]="isSuggestingCategory || !productForm.get('name')?.value"
+                    >
+                      ✨ {{ isSuggestingCategory ? 'Analyzing...' : 'AI Auto-Pick [Phase 2]' }}
+                    </button>
+                  </div>
                   <select class="form-control" formControlName="categoryId">
                     <option value="" disabled>Select category</option>
                     <option *ngFor="let c of categories" [value]="c.id">{{ c.name }}</option>
                   </select>
+                  <small *ngIf="categorySuggestion" class="text-success text-sm mt-1 d-block">
+                    ✓ {{ categorySuggestion.explanation }}
+                  </small>
                 </div>
 
                 <div class="form-group flex-1">
@@ -262,6 +297,137 @@ import { Product, Category, Supplier, PagedResult } from '../../models/app.model
               </button>
             </div>
           </form>
+        </div>
+      </div>
+
+      <!-- AI CATALOG AUDIT MODAL (PHASE 2) -->
+      <div *ngIf="showAuditModal" class="modal-backdrop">
+        <div class="modal-dialog" style="max-width: 860px;">
+          <div class="modal-header">
+            <div>
+              <div class="d-flex align-center gap-2">
+                <h3>AI Catalog Deduplication & Integrity Audit</h3>
+                <span class="ai-badge-chip phase2">Phase 2 AI</span>
+              </div>
+              <p class="subtitle text-sm">Natural language token overlap (Jaccard) and SKU normalization scanning for catalog hygiene</p>
+            </div>
+            <button class="btn-close" (click)="showAuditModal = false">×</button>
+          </div>
+          <div class="modal-body">
+            <div *ngIf="isLoadingAudit" class="p-5 text-center" style="padding: 2.5rem; text-align: center;">
+              <div class="loading-spinner mb-3" style="margin: 0 auto 1rem;"></div>
+              <p class="text-muted">Analyzing catalog token embeddings, normalized SKUs, and category distributions...</p>
+            </div>
+
+            <div *ngIf="!isLoadingAudit && auditReport">
+              <!-- KPI Row -->
+              <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+                <div class="card p-3" style="text-align: center; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 1rem;">
+                  <span class="text-xs text-muted" style="font-size: 0.75rem; display: block;">QUALITY SCORE</span>
+                  <div class="font-bold text-success" style="font-size: 1.75rem;">{{ auditReport.catalogQualityScore }}%</div>
+                  <span class="text-xs text-muted" style="font-size: 0.75rem;">Clean Health Index</span>
+                </div>
+                <div class="card p-3" style="text-align: center; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 1rem;">
+                  <span class="text-xs text-muted" style="font-size: 0.75rem; display: block;">TOTAL PRODUCTS</span>
+                  <div class="font-bold" style="font-size: 1.75rem;">{{ auditReport.totalProductsScanned }}</div>
+                  <span class="text-xs text-muted" style="font-size: 0.75rem;">Active Master SKUs</span>
+                </div>
+                <div class="card p-3" style="text-align: center; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 1rem;">
+                  <span class="text-xs text-muted" style="font-size: 0.75rem; display: block;">DUPLICATE CLUSTERS</span>
+                  <div class="font-bold" [ngClass]="auditReport.potentialDuplicatePairsCount > 0 ? 'text-warning' : 'text-success'" style="font-size: 1.75rem;">
+                    {{ auditReport.potentialDuplicatePairsCount }}
+                  </div>
+                  <span class="text-xs text-muted" style="font-size: 0.75rem;">Identified Overlaps</span>
+                </div>
+                <div class="card p-3" style="text-align: center; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 1rem;">
+                  <span class="text-xs text-muted" style="font-size: 0.75rem; display: block;">CATEGORY ANOMALIES</span>
+                  <div class="font-bold text-info" style="font-size: 1.75rem;">{{ auditReport.categoryAnomaliesCount }}</div>
+                  <span class="text-xs text-muted" style="font-size: 0.75rem;">Classification Flags</span>
+                </div>
+              </div>
+
+              <!-- Duplicate Clusters Table -->
+              <div class="card p-0 mb-3" style="overflow: hidden; border: 1px solid var(--border-color); margin-bottom: 1rem;">
+                <div class="card-header" style="background: #f8fafc; padding: 0.75rem 1rem;">
+                  <h4 style="margin: 0; font-size: 0.95rem;">Potential Duplicate & Conflicting Products</h4>
+                </div>
+                <div class="table-responsive">
+                  <table class="table" style="min-width: 100%;">
+                    <thead>
+                      <tr>
+                        <th>Product A</th>
+                        <th>Product B (Similar Match)</th>
+                        <th>Similarity Score</th>
+                        <th>Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr *ngFor="let pair of auditReport.duplicatePairs">
+                        <td>
+                          <strong>{{ pair.productAName }}</strong>
+                          <div class="code-badge">{{ pair.productASku }}</div>
+                          <div class="text-xs text-muted" style="font-size: 0.75rem;">{{ pair.productACategory }} • {{ pair.productAPrice | currency }}</div>
+                        </td>
+                        <td>
+                          <strong>{{ pair.productBName }}</strong>
+                          <div class="code-badge">{{ pair.productBSku }}</div>
+                          <div class="text-xs text-muted" style="font-size: 0.75rem;">{{ pair.productBCategory }} • {{ pair.productBPrice | currency }}</div>
+                        </td>
+                        <td>
+                          <span class="badge" [ngClass]="pair.similarityScore >= 0.85 ? 'badge-danger' : 'badge-warning'">
+                            {{ pair.similarityScore * 100 }}% Match
+                          </span>
+                        </td>
+                        <td>
+                          <span class="text-sm">{{ pair.similarityReason }}</span>
+                        </td>
+                      </tr>
+                      <tr *ngIf="auditReport.duplicatePairs.length === 0">
+                        <td colspan="4" class="text-center text-success py-4">
+                          ✓ Catalog Deduplication Passed: No conflicting or redundant product records found!
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Category Misclassifications (if any) -->
+              <div *ngIf="auditReport.misclassificationAlerts.length > 0" class="card p-0" style="overflow: hidden; border: 1px solid var(--border-color);">
+                <div class="card-header" style="background: #fffbeb; padding: 0.75rem 1rem;">
+                  <h4 style="margin: 0; font-size: 0.95rem; color: #92400e;">Category Misclassification Suggestions</h4>
+                </div>
+                <div class="table-responsive">
+                  <table class="table" style="min-width: 100%;">
+                    <thead>
+                      <tr>
+                        <th>Product</th>
+                        <th>Current Category</th>
+                        <th>AI Suggested Category</th>
+                        <th>Confidence</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr *ngFor="let a of auditReport.misclassificationAlerts">
+                        <td>
+                          <strong>{{ a.productName }}</strong> ({{ a.sku }})
+                        </td>
+                        <td><span class="badge badge-neutral">{{ a.currentCategory }}</span></td>
+                        <td><strong class="text-success">{{ a.suggestedCategory }}</strong></td>
+                        <td><span class="badge badge-info">{{ a.confidence * 100 }}%</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" (click)="showAuditModal = false">Close</button>
+            <button type="button" class="btn btn-primary" (click)="openAuditModal()">
+              <span>🔄</span> Re-scan Catalog
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -394,6 +560,41 @@ import { Product, Category, Supplier, PagedResult } from '../../models/app.model
       50% { left: 40%; width: 50%; }
       100% { left: 100%; width: 40%; }
     }
+
+    /* Phase 2: AI Catalog Intelligence Styles */
+    .duplicate-warning-box {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: var(--radius-sm);
+      padding: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .duplicate-item {
+      color: #92400e;
+      line-height: 1.4;
+    }
+    .btn-link-ai {
+      background: none;
+      border: none;
+      color: #0284c7;
+      font-size: 0.75rem;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 0;
+    }
+    .btn-link-ai:hover:not(:disabled) {
+      text-decoration: underline;
+    }
+    .btn-link-ai:disabled {
+      color: var(--text-muted);
+      cursor: not-allowed;
+    }
+    .d-flex { display: flex; }
+    .justify-between { justify-content: space-between; }
+    .align-center { align-items: center; }
+    .d-block { display: block; }
   `]
 })
 export class ProductsListComponent implements OnInit, OnDestroy {
@@ -419,11 +620,22 @@ export class ProductsListComponent implements OnInit, OnDestroy {
   productForm: FormGroup;
   isSubmitting = false;
 
+  // Phase 2: AI Catalog Intelligence
+  duplicateMatches: DuplicateProductMatch[] = [];
+  isCheckingDuplicates = false;
+  categorySuggestion: CategorySuggestion | null = null;
+  isSuggestingCategory = false;
+  showAuditModal = false;
+  isLoadingAudit = false;
+  auditReport: CatalogAuditReport | null = null;
+  private nameChangeSub?: Subscription;
+
   constructor(
     private api: InventoryApiService,
     public auth: AuthService,
     private notify: NotificationService,
     private fb: FormBuilder,
+    private route: ActivatedRoute,
     private cdr: ChangeDetectorRef
   ) {
     this.productForm = this.fb.group({
@@ -437,11 +649,29 @@ export class ProductsListComponent implements OnInit, OnDestroy {
       categoryId: ['', [Validators.required]],
       supplierId: [null]
     });
+
+    this.nameChangeSub = this.productForm.get('name')?.valueChanges.pipe(
+      debounceTime(400),
+      distinctUntilChanged()
+    ).subscribe((name: string) => {
+      if (name && name.trim().length >= 3) {
+        this.checkDuplicates(name);
+      } else {
+        this.duplicateMatches = [];
+        this.cdr.markForCheck();
+      }
+    });
   }
 
   get pf() { return this.productForm.controls; }
 
   ngOnInit() {
+    this.route.queryParams.subscribe(params => {
+      if (params['action'] === 'audit') {
+        this.openAuditModal();
+      }
+    });
+
     this.searchSub = this.searchSubject.pipe(
       debounceTime(300),
       distinctUntilChanged()
@@ -453,9 +683,68 @@ export class ProductsListComponent implements OnInit, OnDestroy {
     this.loadProducts(true);
   }
 
+  openAuditModal() {
+    this.showAuditModal = true;
+    this.isLoadingAudit = true;
+    this.api.getCatalogAuditReport().subscribe({
+      next: (report) => {
+        this.auditReport = report;
+        this.isLoadingAudit = false;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.isLoadingAudit = false;
+        this.notify.danger('Catalog Deduplication', 'Error loading catalog deduplication audit');
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
   ngOnDestroy() {
     this.loadSub?.unsubscribe();
     this.searchSub?.unsubscribe();
+    this.nameChangeSub?.unsubscribe();
+  }
+
+  checkDuplicates(name: string) {
+    this.isCheckingDuplicates = true;
+    this.api.detectDuplicateProducts({
+      name,
+      sku: this.productForm.get('sku')?.value || undefined,
+      currentProductId: this.editingProduct?.id
+    }).subscribe({
+      next: (res) => {
+        this.isCheckingDuplicates = false;
+        this.duplicateMatches = res.matches;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.isCheckingDuplicates = false;
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  suggestCategory() {
+    const name = this.productForm.get('name')?.value;
+    const description = this.productForm.get('description')?.value;
+    if (!name) return;
+
+    this.isSuggestingCategory = true;
+    this.api.suggestCategory({ name, description }).subscribe({
+      next: (res) => {
+        this.isSuggestingCategory = false;
+        this.categorySuggestion = res;
+        if (res && res.categoryId) {
+          this.productForm.patchValue({ categoryId: res.categoryId });
+        }
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.isSuggestingCategory = false;
+        this.cdr.markForCheck();
+      }
+    });
   }
 
   onSearchChange(text: string) {
@@ -544,6 +833,8 @@ export class ProductsListComponent implements OnInit, OnDestroy {
 
   openAddModal() {
     this.editingProduct = null;
+    this.duplicateMatches = [];
+    this.categorySuggestion = null;
     this.productForm.reset({
       sku: '',
       name: '',
@@ -560,6 +851,8 @@ export class ProductsListComponent implements OnInit, OnDestroy {
 
   openEditModal(p: Product) {
     this.editingProduct = p;
+    this.duplicateMatches = [];
+    this.categorySuggestion = null;
     this.productForm.patchValue({
       sku: p.sku,
       name: p.name,
@@ -577,6 +870,8 @@ export class ProductsListComponent implements OnInit, OnDestroy {
   closeModal() {
     this.showModal = false;
     this.editingProduct = null;
+    this.duplicateMatches = [];
+    this.categorySuggestion = null;
   }
 
   saveProduct() {

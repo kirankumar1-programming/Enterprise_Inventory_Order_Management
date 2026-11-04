@@ -4,12 +4,13 @@ import { RouterOutlet } from '@angular/router';
 import { SidebarComponent } from './shared/sidebar/sidebar.component';
 import { NavbarComponent } from './shared/navbar/navbar.component';
 import { ToastComponent } from './shared/toast/toast.component';
+import { AiCopilotComponent } from './shared/copilot/ai-copilot.component';
 import { AuthService } from './core/services/auth.service';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, SidebarComponent, NavbarComponent, ToastComponent],
+  imports: [CommonModule, RouterOutlet, SidebarComponent, NavbarComponent, ToastComponent, AiCopilotComponent],
   template: `
     <app-toast></app-toast>
 
@@ -27,6 +28,7 @@ import { AuthService } from './core/services/auth.service';
           </main>
         </div>
       </div>
+      <app-ai-copilot></app-ai-copilot>
     </ng-template>
   `,
   styles: [`

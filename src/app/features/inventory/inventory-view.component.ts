@@ -7,7 +7,8 @@ import { AuthService } from '../../core/services/auth.service';
 import { NotificationService } from '../../core/services/notification.service';
 import {
   InventoryItem, Warehouse, Product, LowStockAlert,
-  StockMovement, PagedResult
+  StockMovement, PagedResult, RestockRecommendation, OverstockAlert, ProductForecastSummary, StockUrgencyLevel,
+  RestockPoDraft
 } from '../../models/app.models';
 
 @Component({
@@ -40,6 +41,13 @@ import {
         <button class="tab-btn" [class.active]="activeTab === 'alerts'" (click)="setTab('alerts')">
           ⚠️ Low-Stock Alerts
           <span *ngIf="lowStockAlerts.length > 0" class="tab-badge">{{ lowStockAlerts.length }}</span>
+        </button>
+        <button class="tab-btn" [class.active]="activeTab === 'forecast'" (click)="setTab('forecast')">
+          🤖 AI Demand Forecast & Dynamic Restock
+          <span class="ai-badge-chip phase2">Phase 2 AI</span>
+          <span *ngIf="forecastSummary && forecastSummary.criticalItemsCount > 0" class="tab-badge badge-danger">
+            {{ forecastSummary.criticalItemsCount }} Critical
+          </span>
         </button>
         <button class="tab-btn" [class.active]="activeTab === 'movements'" (click)="setTab('movements')">
           📜 Movement History
@@ -167,6 +175,329 @@ import {
                 <tr *ngIf="lowStockAlerts.length === 0">
                   <td colspan="8" class="text-center text-success py-4">
                     ✓ All warehouses have healthy inventory levels above their reorder thresholds!
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: AI Demand Forecast & Dynamic Restock -->
+      <div *ngIf="activeTab === 'forecast'" class="tab-pane">
+        <!-- AI Summary Executive Metrics Table (Table Format) -->
+        <div *ngIf="forecastSummary" class="card mb-4 table-card">
+          <div class="table-responsive">
+            <table class="table forecast-summary-table">
+              <thead>
+                <tr>
+                  <th style="width: 28%;">AI Demand &amp; Health Metric</th>
+                  <th style="width: 16%;" class="text-center">Count / Value</th>
+                  <th style="width: 38%;">Threshold &amp; Assessment Rule</th>
+                  <th style="width: 18%;" class="text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr [class.row-critical]="forecastSummary.criticalItemsCount > 0">
+                  <td>
+                    <div class="metric-title-cell">
+                      <span class="metric-icon">🚨</span>
+                      <div>
+                        <strong>CRITICAL STOCKOUT RISK</strong>
+                        <div class="text-xs text-muted">Urgent buffer depletion</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="text-center">
+                    <span class="badge" [ngClass]="forecastSummary.criticalItemsCount > 0 ? 'badge-danger font-bold' : 'badge-neutral'">
+                      {{ forecastSummary.criticalItemsCount }} Items
+                    </span>
+                  </td>
+                  <td>
+                    <span class="text-sm">Less than <strong>3 days</strong> of stock remaining based on 30-day velocity.</span>
+                  </td>
+                  <td class="text-right">
+                    <button class="btn btn-sm btn-outline-danger" (click)="forecastSubView = 'recommendations'; urgencyFilter = 'critical'">
+                      Filter Critical →
+                    </button>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td>
+                    <div class="metric-title-cell">
+                      <span class="metric-icon">📦</span>
+                      <div>
+                        <strong>RESTOCK RECOMMENDED</strong>
+                        <div class="text-xs text-muted">Below dynamic safety buffer</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="text-center">
+                    <span class="badge badge-warning font-bold">
+                      {{ forecastSummary.totalAtRiskItems }} Items
+                    </span>
+                  </td>
+                  <td>
+                    <span class="text-sm">Stock below dynamic ROP + Lead time (<code>ROP = Burn × Lead Time + SS</code>).</span>
+                  </td>
+                  <td class="text-right">
+                    <button class="btn btn-sm btn-secondary" (click)="forecastSubView = 'recommendations'; urgencyFilter = 'all'">
+                      View All ({{ forecastSummary.totalAtRiskItems }}) →
+                    </button>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td>
+                    <div class="metric-title-cell">
+                      <span class="metric-icon">⏳</span>
+                      <div>
+                        <strong>OVERSTOCKED PRODUCTS</strong>
+                        <div class="text-xs text-muted">Stagnant inventory turnover</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="text-center">
+                    <span class="badge badge-info font-bold">
+                      {{ forecastSummary.overstockedItemsCount }} Items
+                    </span>
+                  </td>
+                  <td>
+                    <span class="text-sm">&gt; <strong>60 days runway</strong> with stagnant turnover.</span>
+                  </td>
+                  <td class="text-right">
+                    <button class="btn btn-sm btn-secondary" (click)="forecastSubView = 'overstock'">
+                      View Overstock →
+                    </button>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td>
+                    <div class="metric-title-cell">
+                      <span class="metric-icon">💵</span>
+                      <div>
+                        <strong>TIED-UP OVERSTOCK CAPITAL</strong>
+                        <div class="text-xs text-muted">Recoverable excess inventory</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="text-center">
+                    <strong class="font-bold text-success" style="font-size: 1rem;">
+                      {{ forecastSummary.totalCapitalInOverstock | currency }}
+                    </strong>
+                  </td>
+                  <td>
+                    <span class="text-sm">Locked in excess carrying inventory eligible for rebalance transfer.</span>
+                  </td>
+                  <td class="text-right">
+                    <button class="btn btn-sm btn-outline-success" (click)="forecastSubView = 'overstock'">
+                      Rebalance Capital →
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Formula & Methodology Explainer (Phase 2) -->
+        <div class="ai-formula-banner mb-3">
+          <div class="d-flex align-center justify-between">
+            <div class="d-flex align-center gap-2">
+              <span class="ai-badge-chip phase2">Phase 2 AI Engine</span>
+              <strong>Predictive Demand & Dynamic Buffer Formulation</strong>
+            </div>
+            <span class="text-sm text-muted">95% Service Level Confidence (Z = 1.65)</span>
+          </div>
+          <div class="formula-text text-sm mt-1">
+            <span><strong>Dynamic Safety Stock:</strong> <code>SS = ⌈1.65 × √(Lead Time) × max(1, Daily Burn × 0.7)⌉</code></span>
+            <span class="mx-2">•</span>
+            <span><strong>Dynamic ROP:</strong> <code>ROP = (Daily Burn × Lead Time) + SS</code></span>
+            <span class="mx-2">•</span>
+            <span><strong>Burn Rate:</strong> Evaluated over 30-Day sales velocity window</span>
+          </div>
+        </div>
+
+        <!-- Sub-View Navigation Pills & Actions -->
+        <div class="d-flex justify-between align-center mb-3">
+          <div class="d-flex gap-2 align-center">
+            <div class="warehouse-pills m-0">
+              <button
+                class="pill"
+                [class.active]="forecastSubView === 'recommendations'"
+                (click)="forecastSubView = 'recommendations'"
+              >
+                Dynamic Restock Recommendations ({{ restockRecommendations.length }})
+              </button>
+              <button
+                class="pill"
+                [class.active]="forecastSubView === 'overstock'"
+                (click)="forecastSubView = 'overstock'"
+              >
+                Overstocked & Dead Stock ({{ overstockAlerts.length }})
+              </button>
+            </div>
+
+            <!-- Urgency Filter (Recommendations view) -->
+            <select
+              *ngIf="forecastSubView === 'recommendations'"
+              class="form-control form-control-sm"
+              style="width: 180px; padding: 0.35rem 0.5rem; font-size: 0.8125rem;"
+              [(ngModel)]="urgencyFilter"
+            >
+              <option value="all">Filter: All Urgencies</option>
+              <option value="critical">🚨 Critical Risk (<3 Days)</option>
+              <option value="advised">📦 Restock Advised</option>
+            </select>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button
+              *ngIf="forecastSubView === 'recommendations' && (auth.isAdmin() || auth.isManager())"
+              class="btn btn-sm btn-ai-gradient"
+              (click)="openPoDraftModal()"
+              [disabled]="isGeneratingPo || restockRecommendations.length === 0"
+            >
+              📋 Generate Restock PO Draft [Phase 2 AI]
+            </button>
+            <button class="btn btn-sm btn-secondary" (click)="loadForecasting()">
+              <span>🔄</span> Recalculate Velocity
+            </button>
+          </div>
+        </div>
+
+        <!-- VIEW A: Restock Recommendations Table -->
+        <div *ngIf="forecastSubView === 'recommendations'" class="card table-card">
+          <div class="card-header">
+            <div>
+              <h3>AI-Driven Restock Recommendations</h3>
+              <p class="subtitle text-sm">Calculated from 30-day sales velocity, supplier lead times, and dynamic safety stock buffer</p>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Facility</th>
+                  <th>Available / Current</th>
+                  <th>Daily Burn Rate</th>
+                  <th>Dynamic Safety / ROP</th>
+                  <th>Runway (Days)</th>
+                  <th>Suggested Order Qty</th>
+                  <th>Est. Cost</th>
+                  <th>Supplier</th>
+                  <th *ngIf="auth.isAdmin() || auth.isManager()">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let rec of filteredRecommendations">
+                  <td>
+                    <strong>{{ rec.productName }}</strong>
+                    <div class="code-badge">{{ rec.productSKU }}</div>
+                  </td>
+                  <td>{{ rec.warehouseName }}</td>
+                  <td>
+                    <span class="avail-qty" [class.text-danger]="rec.availableStock <= 0">{{ rec.availableStock }}</span>
+                    <span class="text-muted text-sm"> / {{ rec.currentStock }}</span>
+                  </td>
+                  <td>
+                    <strong>{{ rec.dailyBurnRate }}</strong> <span class="text-muted text-sm">units/day</span>
+                  </td>
+                  <td>
+                    <span class="badge badge-neutral">SS: {{ rec.dynamicSafetyStock }}</span>
+                    <span class="badge badge-info">ROP: {{ rec.dynamicReorderPoint }}</span>
+                  </td>
+                  <td>
+                    <span
+                      class="badge"
+                      [ngClass]="rec.daysOfStockRemaining <= 3 ? 'badge-danger' : 'badge-warning'"
+                    >
+                      {{ rec.daysOfStockRemaining <= 0 ? 'Stocked Out' : (rec.daysOfStockRemaining + ' days left') }}
+                    </span>
+                  </td>
+                  <td>
+                    <strong class="text-primary">+{{ rec.recommendedOrderQuantity }} units</strong>
+                  </td>
+                  <td>{{ rec.estimatedOrderCost | currency }}</td>
+                  <td>
+                    <span class="text-sm font-bold">{{ rec.supplierName || 'Primary Supplier' }}</span>
+                  </td>
+                  <td *ngIf="auth.isAdmin() || auth.isManager()">
+                    <button class="btn btn-sm btn-primary" (click)="quickReplenishFromForecast(rec)">
+                      + Replenish
+                    </button>
+                  </td>
+                </tr>
+
+                <tr *ngIf="filteredRecommendations.length === 0">
+                  <td colspan="10" class="text-center text-success py-4">
+                    ✓ Optimal Inventory Health: No products matching selected urgency at risk!
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- VIEW B: Overstock / Capital Efficiency Table -->
+        <div *ngIf="forecastSubView === 'overstock'" class="card table-card">
+          <div class="card-header">
+            <div>
+              <h3>Overstocked Inventory & Capital Efficiency</h3>
+              <p class="subtitle text-sm">Items with excessive inventory relative to sales burn rate (>60 days or dormant turnover)</p>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Facility</th>
+                  <th>Current Stock</th>
+                  <th>Daily Burn Rate</th>
+                  <th>Estimated Runway</th>
+                  <th>Excess Quantity</th>
+                  <th>Tied-Up Capital</th>
+                  <th>Optimization Recommendation</th>
+                  <th *ngIf="auth.isAdmin() || auth.isManager()">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let item of overstockAlerts">
+                  <td>
+                    <strong>{{ item.productName }}</strong>
+                    <div class="code-badge">{{ item.productSKU }}</div>
+                  </td>
+                  <td>{{ item.warehouseName }}</td>
+                  <td><strong>{{ item.currentStock }}</strong></td>
+                  <td>{{ item.dailyBurnRate }} units/day</td>
+                  <td>
+                    <span class="badge badge-neutral">{{ item.daysOfStockRemaining }} days</span>
+                  </td>
+                  <td>
+                    <strong class="text-danger">+{{ item.excessQuantity }} units</strong>
+                  </td>
+                  <td>
+                    <strong class="text-warning">{{ item.capitalTiedUp | currency }}</strong>
+                  </td>
+                  <td>
+                    <span class="text-sm text-muted">{{ item.recommendation }}</span>
+                  </td>
+                  <td *ngIf="auth.isAdmin() || auth.isManager()">
+                    <button class="btn btn-sm btn-secondary" (click)="quickTransferOverstock(item)" title="Transfer excess to other warehouse">
+                      🔄 Rebalance
+                    </button>
+                  </td>
+                </tr>
+
+                <tr *ngIf="overstockAlerts.length === 0">
+                  <td colspan="9" class="text-center text-success py-4">
+                    ✓ Excellent Capital Efficiency: No significantly overstocked or stagnant items detected.
                   </td>
                 </tr>
               </tbody>
@@ -348,6 +679,89 @@ import {
           </form>
         </div>
       </div>
+
+      <!-- PO DRAFT MODAL (PHASE 2) -->
+      <div *ngIf="showPoModal && poDraft" class="modal-backdrop">
+        <div class="modal-dialog" style="max-width: 780px;">
+          <div class="modal-header">
+            <div>
+              <div class="d-flex align-center gap-2">
+                <h3>Draft Purchase Order for Replenishment</h3>
+                <span class="ai-badge-chip phase2">Phase 2 AI</span>
+              </div>
+              <p class="subtitle text-sm">Automated replenishment batch aggregated from predictive demand runway & burn rate</p>
+            </div>
+            <button class="btn-close" (click)="showPoModal = false">×</button>
+          </div>
+          <div class="modal-body">
+            <div class="po-meta-banner p-3 mb-3" style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius-sm);">
+              <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
+                <div>
+                  <span class="text-xs text-muted" style="display: block; font-size: 0.75rem;">PO REFERENCE</span>
+                  <strong>{{ poDraft.poReferenceNumber }}</strong>
+                </div>
+                <div>
+                  <span class="text-xs text-muted" style="display: block; font-size: 0.75rem;">TARGET FACILITY</span>
+                  <strong>{{ poDraft.warehouseName }}</strong>
+                </div>
+                <div>
+                  <span class="text-xs text-muted" style="display: block; font-size: 0.75rem;">EST. DELIVERY DATE</span>
+                  <strong>{{ poDraft.estimatedDeliveryDate | date:'mediumDate' }}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>SKU</th>
+                    <th>Order Qty</th>
+                    <th>Unit Cost</th>
+                    <th>Subtotal</th>
+                    <th>Supplier</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let item of poDraft.items">
+                    <td><strong>{{ item.productName }}</strong></td>
+                    <td><span class="code-badge">{{ item.productSKU }}</span></td>
+                    <td><strong class="text-primary">+{{ item.quantityToOrder }} units</strong></td>
+                    <td>{{ item.unitCostPrice | currency }}</td>
+                    <td><strong>{{ item.totalCost | currency }}</strong></td>
+                    <td>{{ item.supplierName }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="d-flex justify-between align-center p-3 mt-3" style="background: #f1f5f9; border-radius: var(--radius-sm);">
+              <div>
+                <span class="text-muted text-sm">Total Recommended Items: <strong>{{ poDraft.items.length }}</strong></span>
+              </div>
+              <div>
+                <span class="text-muted text-sm mr-2" style="margin-right: 0.5rem;">Grand Total Estimated PO Cost:</span>
+                <span class="font-bold text-success" style="font-size: 1.25rem;">{{ poDraft.grandTotalCost | currency }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" (click)="showPoModal = false">Close</button>
+            <button type="button" class="btn btn-secondary" (click)="copyPoDraft()">
+              📋 Copy PO Summary
+            </button>
+            <button
+              type="button"
+              class="btn btn-primary"
+              [disabled]="isSubmitting"
+              (click)="confirmBatchReplenish()"
+            >
+              {{ isSubmitting ? 'Replenishing...' : '⚡ Confirm & Execute Batch Stock Replenishment' }}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   `,
   styles: [`
@@ -419,10 +833,58 @@ import {
     .form-row { display: flex; gap: 1rem; }
     .flex-1 { flex: 1; }
     .btn-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); }
+    .ai-formula-banner {
+      background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%);
+      border: 1px solid #d8b4fe;
+      border-radius: var(--radius-sm);
+      padding: 0.85rem 1.25rem;
+    }
+    .formula-text { color: #581c87; }
+    .formula-text code {
+      background: rgba(255, 255, 255, 0.7);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: #6b21a8;
+      border: 1px solid #e9d5ff;
+    }
+    .forecast-summary-table {
+      margin: 0;
+    }
+    .metric-title-cell {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .metric-title-cell .metric-icon {
+      font-size: 1.35rem;
+      background: #f8fafc;
+      border: 1px solid var(--border-color);
+      width: 38px;
+      height: 38px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .row-critical {
+      background-color: #fff1f2;
+    }
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+    .text-xs { font-size: 0.75rem; }
+    .text-danger { color: #dc2626; }
+    .text-warning { color: #d97706; }
+    .text-info { color: #0284c7; }
+    .text-success { color: #16a34a; }
+    .text-primary { color: #2563eb; }
+    .text-md { font-size: 0.9rem; }
   `]
 })
 export class InventoryViewComponent implements OnInit {
-  activeTab: 'stock' | 'alerts' | 'movements' = 'stock';
+  activeTab: 'stock' | 'alerts' | 'forecast' | 'movements' = 'stock';
   warehouses: Warehouse[] = [];
   products: Product[] = [];
   selectedWarehouseId: number | null = null;
@@ -430,6 +892,27 @@ export class InventoryViewComponent implements OnInit {
   inventoryPaged: PagedResult<InventoryItem> | null = null;
   lowStockAlerts: LowStockAlert[] = [];
   movementsPaged: PagedResult<StockMovement> | null = null;
+
+  // Phase 2: AI Forecasting Data
+  forecastSummary: ProductForecastSummary | null = null;
+  restockRecommendations: RestockRecommendation[] = [];
+  overstockAlerts: OverstockAlert[] = [];
+  forecastSubView: 'recommendations' | 'overstock' = 'recommendations';
+  urgencyFilter: 'all' | 'critical' | 'advised' = 'all';
+
+  showPoModal = false;
+  isGeneratingPo = false;
+  poDraft: RestockPoDraft | null = null;
+
+  get filteredRecommendations(): RestockRecommendation[] {
+    if (this.urgencyFilter === 'critical') {
+      return this.restockRecommendations.filter(r => r.urgency === StockUrgencyLevel.Critical || r.daysOfStockRemaining <= 3);
+    }
+    if (this.urgencyFilter === 'advised') {
+      return this.restockRecommendations.filter(r => r.urgency === StockUrgencyLevel.RestockAdvised);
+    }
+    return this.restockRecommendations;
+  }
 
   showAdjustModal = false;
   showTransferModal = false;
@@ -466,7 +949,9 @@ export class InventoryViewComponent implements OnInit {
 
   ngOnInit() {
     this.route.queryParams.subscribe(params => {
-      if (params['lowStock']) {
+      if (params['tab'] === 'forecast') {
+        this.activeTab = 'forecast';
+      } else if (params['lowStock']) {
         this.activeTab = 'alerts';
       }
     });
@@ -475,10 +960,124 @@ export class InventoryViewComponent implements OnInit {
     this.loadInventories();
     this.loadLowStock();
     this.loadMovements();
+    this.loadForecasting();
   }
 
-  setTab(tab: 'stock' | 'alerts' | 'movements') {
+  setTab(tab: 'stock' | 'alerts' | 'forecast' | 'movements') {
     this.activeTab = tab;
+    if (tab === 'forecast') {
+      this.loadForecasting();
+    }
+  }
+
+  loadForecasting() {
+    this.api.getForecastSummary(this.selectedWarehouseId || undefined).subscribe({
+      next: (summary) => {
+        this.forecastSummary = summary;
+        this.cdr.markForCheck();
+      },
+      error: () => this.cdr.markForCheck()
+    });
+
+    this.api.getRestockRecommendations(this.selectedWarehouseId || undefined).subscribe({
+      next: (recs) => {
+        this.restockRecommendations = recs;
+        this.cdr.markForCheck();
+      },
+      error: () => this.cdr.markForCheck()
+    });
+
+    this.api.getOverstockAlerts(this.selectedWarehouseId || undefined).subscribe({
+      next: (alerts) => {
+        this.overstockAlerts = alerts;
+        this.cdr.markForCheck();
+      },
+      error: () => this.cdr.markForCheck()
+    });
+  }
+
+  quickReplenishFromForecast(rec: RestockRecommendation) {
+    this.adjustForm.patchValue({
+      warehouseId: rec.warehouseId,
+      productId: rec.productId,
+      adjustmentQuantity: rec.recommendedOrderQuantity,
+      reason: `Replenishment order based on AI demand forecast (${rec.dailyBurnRate} units/day)`
+    });
+    this.showAdjustModal = true;
+  }
+
+  openPoDraftModal() {
+    this.isGeneratingPo = true;
+    this.api.generateRestockPoDraft({ warehouseId: this.selectedWarehouseId || undefined }).subscribe({
+      next: (res) => {
+        this.poDraft = res;
+        this.showPoModal = true;
+        this.isGeneratingPo = false;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.isGeneratingPo = false;
+        this.notify.danger('Restock PO', 'Error generating restock PO draft');
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  confirmBatchReplenish() {
+    if (!this.poDraft || !this.poDraft.items.length) return;
+    this.isSubmitting = true;
+    let completed = 0;
+    const total = this.poDraft.items.length;
+    this.poDraft.items.forEach(item => {
+      this.api.adjustStock({
+        warehouseId: item.warehouseId,
+        productId: item.productId,
+        adjustmentQuantity: item.quantityToOrder,
+        reason: `Automated replenishment from AI PO Draft ${this.poDraft?.poReferenceNumber}`
+      }).subscribe({
+        next: () => {
+          completed++;
+          if (completed === total) {
+            this.isSubmitting = false;
+            this.showPoModal = false;
+            this.notify.success('Restock Executed', `Successfully replenished ${total} products via AI Restock Draft!`);
+            this.loadForecasting();
+            this.loadInventories();
+            this.cdr.markForCheck();
+          }
+        },
+        error: () => {
+          completed++;
+          if (completed === total) {
+            this.isSubmitting = false;
+            this.showPoModal = false;
+            this.notify.warning('Restock Partially Executed', 'Batch replenishment finished with some partial records');
+            this.loadForecasting();
+            this.loadInventories();
+            this.cdr.markForCheck();
+          }
+        }
+      });
+    });
+  }
+
+  copyPoDraft() {
+    if (!this.poDraft) return;
+    const summary = `PURCHASE ORDER: ${this.poDraft.poReferenceNumber}\nFacility: ${this.poDraft.warehouseName}\nSupplier: ${this.poDraft.supplierName}\nDelivery: ${this.poDraft.estimatedDeliveryDate}\nTotal Items: ${this.poDraft.items.length}\nGrand Total: $${this.poDraft.grandTotalCost.toFixed(2)}`;
+    navigator.clipboard?.writeText(summary);
+    this.notify.success('Copied', 'Copied PO summary to clipboard!');
+  }
+
+  quickTransferOverstock(item: OverstockAlert) {
+    const destWarehouse = this.warehouses.find(w => w.id !== item.warehouseId);
+    this.transferForm.patchValue({
+      sourceWarehouseId: item.warehouseId,
+      destinationWarehouseId: destWarehouse ? destWarehouse.id : '',
+      productId: item.productId,
+      quantity: Math.min(item.excessQuantity, 20),
+      notes: `AI Rebalancing: Transfer excess overstock from ${item.warehouseName}`
+    });
+    this.showTransferModal = true;
   }
 
   loadLookups() {

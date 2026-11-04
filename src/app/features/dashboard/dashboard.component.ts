@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { InventoryApiService } from '../../core/services/inventory-api.service';
 import { AuthService } from '../../core/services/auth.service';
-import { DashboardSummary } from '../../models/app.models';
+import { DashboardSummary, ProductForecastSummary } from '../../models/app.models';
 
 @Component({
   selector: 'app-dashboard',
@@ -77,6 +77,47 @@ import { DashboardSummary } from '../../models/app.models';
             {{ summary.lowStockItemCount }}
           </div>
           <div class="kpi-meta text-muted">Requires replenishment</div>
+        </div>
+      </div>
+
+      <!-- Phase 2: AI Predictive Intelligence Summary Card -->
+      <div *ngIf="forecastSummary" class="card ai-forecast-card">
+        <div class="ai-card-header">
+          <div class="d-flex align-center gap-2">
+            <div class="ai-badge">
+              <span>🤖 AI PREDICTIVE INTELLIGENCE</span>
+            </div>
+            <span class="ai-badge-chip">Phase 2 AI</span>
+          </div>
+          <div class="d-flex gap-2">
+            <a routerLink="/products" [queryParams]="{ action: 'audit' }" class="btn btn-sm btn-secondary">
+              ✨ Catalog Deduplication
+            </a>
+            <a routerLink="/inventory" [queryParams]="{ tab: 'forecast' }" class="btn btn-sm btn-outline-primary">
+              Explore Restock Recommendations →
+            </a>
+          </div>
+        </div>
+        <div class="ai-metrics-row">
+          <div class="ai-metric-item">
+            <span class="ai-metric-label">Critical Stockout Risk (< 3 Days)</span>
+            <span class="ai-metric-val text-danger">{{ forecastSummary.criticalItemsCount }} items</span>
+          </div>
+          <div class="ai-metric-divider"></div>
+          <div class="ai-metric-item">
+            <span class="ai-metric-label">Restock Recommended (< 14 Days)</span>
+            <span class="ai-metric-val text-warning">{{ forecastSummary.totalAtRiskItems }} items</span>
+          </div>
+          <div class="ai-metric-divider"></div>
+          <div class="ai-metric-item">
+            <span class="ai-metric-label">Overstocked / Stagnant Items</span>
+            <span class="ai-metric-val text-info">{{ forecastSummary.overstockedItemsCount }} items</span>
+          </div>
+          <div class="ai-metric-divider"></div>
+          <div class="ai-metric-item">
+            <span class="ai-metric-label">Estimated Capital in Overstock</span>
+            <span class="ai-metric-val text-success">{{ forecastSummary.totalCapitalInOverstock | currency }}</span>
+          </div>
         </div>
       </div>
 
@@ -415,10 +456,72 @@ import { DashboardSummary } from '../../models/app.models';
     .error-card h3 { font-size: 1.25rem; color: var(--text-main); }
     .error-msg { color: var(--text-muted); font-size: 0.875rem; line-height: 1.5; }
     .error-actions { display: flex; gap: 0.75rem; margin-top: 0.5rem; }
+    .ai-forecast-card {
+      background: linear-gradient(135deg, #f0fdf4 0%, #f8fafc 100%);
+      border: 1px solid #bbf7d0;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .ai-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    .ai-badge {
+      display: inline-flex;
+      align-items: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #15803d;
+      letter-spacing: 0.05em;
+    }
+    .ai-metrics-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      flex-wrap: wrap;
+      gap: 1.25rem;
+    }
+    .ai-metric-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .ai-metric-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .ai-metric-val {
+      font-size: 1.25rem;
+      font-weight: 800;
+    }
+    .ai-metric-divider {
+      width: 1px;
+      height: 36px;
+      background: #e2e8f0;
+    }
+    .btn-outline-primary {
+      background: #ffffff;
+      border: 1px solid var(--primary);
+      color: var(--primary);
+      font-weight: 600;
+      padding: 0.4rem 0.85rem;
+      border-radius: var(--radius-sm);
+      text-decoration: none;
+      font-size: 0.8125rem;
+    }
+    .btn-outline-primary:hover {
+      background: var(--primary);
+      color: #ffffff;
+    }
   `]
 })
 export class DashboardComponent implements OnInit {
   summary: DashboardSummary | null = null;
+  forecastSummary: ProductForecastSummary | null = null;
   isLoading = true;
   errorMessage: string | null = null;
 
@@ -430,6 +533,17 @@ export class DashboardComponent implements OnInit {
 
   ngOnInit() {
     this.loadSummary();
+    this.loadForecastSummary();
+  }
+
+  loadForecastSummary() {
+    this.api.getForecastSummary().subscribe({
+      next: (data) => {
+        this.forecastSummary = data;
+        this.cdr.markForCheck();
+      },
+      error: () => {}
+    });
   }
 
   loadSummary() {

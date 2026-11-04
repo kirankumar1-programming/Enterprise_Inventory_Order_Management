@@ -349,6 +349,14 @@ h4 { font-size: 1.125rem; }
   overflow: hidden;
 }
 
+app-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
 .main-content {
   flex: 1;
   display: flex;
@@ -373,4 +381,43 @@ h4 { font-size: 1.125rem; }
   border: 1px solid #e2e8f0;
   white-space: nowrap;
   display: inline-block;
+}
+
+/* AI Phase Badges & Styling */
+.ai-badge-chip {
+  background: linear-gradient(135deg, #7c3aed 0%, #9333ea 100%);
+  color: #fff;
+  font-size: 0.6875rem;
+  padding: 0.18rem 0.55rem;
+  border-radius: var(--radius-full);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  box-shadow: 0 2px 4px rgba(124, 58, 237, 0.25);
+}
+.ai-badge-chip.phase1 {
+  background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
+  box-shadow: 0 2px 4px rgba(2, 132, 199, 0.25);
+}
+.ai-badge-chip.phase2 {
+  background: linear-gradient(135deg, #7c3aed 0%, #9333ea 100%);
+  box-shadow: 0 2px 4px rgba(124, 58, 237, 0.25);
+}
+.btn-ai-gradient {
+  background: linear-gradient(135deg, #7c3aed 0%, #9333ea 100%);
+  color: #fff;
+  border: none;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 10px rgba(124, 58, 237, 0.25);
+}
+.btn-ai-gradient:hover {
+  background: linear-gradient(135deg, #6d28d9 0%, #7e22ce 100%);
+  box-shadow: 0 6px 14px rgba(124, 58, 237, 0.35);
+  transform: translateY(-1px);
 }
