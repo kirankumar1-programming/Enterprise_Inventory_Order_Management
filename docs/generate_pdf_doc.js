@@ -1,0 +1,1180 @@
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
+
+const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Enterprise Inventory & Order Management - API & Page Flow Documentation</title>
+<style>
+  @page {
+    size: A4;
+    margin: 20mm 15mm 20mm 15mm;
+    @bottom-right {
+      content: counter(page);
+    }
+  }
+
+  * {
+    box-sizing: border-box;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #1e293b;
+    background-color: #ffffff;
+    line-height: 1.5;
+    font-size: 11pt;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Page Break Utilities */
+  .page-break {
+    page-break-before: always;
+  }
+  .avoid-break {
+    page-break-inside: avoid;
+  }
+
+  /* Cover Page */
+  .cover-page {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 40px 20px 20px 20px;
+    page-break-after: always;
+  }
+
+  .cover-header {
+    border-bottom: 4px solid #2563eb;
+    padding-bottom: 25px;
+  }
+
+  .cover-badge {
+    display: inline-block;
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-weight: 700;
+    font-size: 10pt;
+    letter-spacing: 0.05em;
+    margin-bottom: 15px;
+    text-transform: uppercase;
+  }
+
+  .cover-title {
+    font-size: 28pt;
+    font-weight: 800;
+    color: #0f172a;
+    margin: 0 0 10px 0;
+    line-height: 1.2;
+  }
+
+  .cover-subtitle {
+    font-size: 14pt;
+    color: #64748b;
+    margin: 0;
+    font-weight: 400;
+  }
+
+  .cover-meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin: 40px 0;
+  }
+
+  .meta-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  .meta-card h4 {
+    margin: 0 0 8px 0;
+    font-size: 10pt;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .meta-card p {
+    margin: 0;
+    font-size: 11pt;
+    font-weight: 600;
+    color: #0f172a;
+  }
+
+  .cover-footer {
+    border-top: 1px solid #e2e8f0;
+    padding-top: 20px;
+    font-size: 9pt;
+    color: #94a3b8;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* Typography */
+  h1 {
+    font-size: 18pt;
+    font-weight: 800;
+    color: #0f172a;
+    border-bottom: 2px solid #2563eb;
+    padding-bottom: 8px;
+    margin-top: 30px;
+    margin-bottom: 16px;
+  }
+
+  h2 {
+    font-size: 14pt;
+    font-weight: 700;
+    color: #1e293b;
+    margin-top: 24px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  h3 {
+    font-size: 12pt;
+    font-weight: 600;
+    color: #334155;
+    margin-top: 18px;
+    margin-bottom: 8px;
+  }
+
+  p {
+    margin: 0 0 10px 0;
+  }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0 20px 0;
+    font-size: 9.5pt;
+  }
+
+  th {
+    background-color: #0f172a;
+    color: #ffffff;
+    font-weight: 600;
+    text-align: left;
+    padding: 8px 12px;
+    border: 1px solid #0f172a;
+  }
+
+  td {
+    padding: 7px 12px;
+    border: 1px solid #e2e8f0;
+    vertical-align: top;
+  }
+
+  tr:nth-child(even) td {
+    background-color: #f8fafc;
+  }
+
+  /* Method Badges */
+  .badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 8.5pt;
+    font-weight: 700;
+    font-family: monospace;
+    text-transform: uppercase;
+  }
+  .badge-get { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+  .badge-post { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+  .badge-put { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+  .badge-delete { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+  .role-pill {
+    display: inline-block;
+    background: #f1f5f9;
+    color: #334155;
+    padding: 1px 6px;
+    border-radius: 12px;
+    font-size: 8pt;
+    font-weight: 600;
+    border: 1px solid #cbd5e1;
+    margin-right: 4px;
+    margin-bottom: 2px;
+  }
+
+  /* Code Blocks */
+  pre, code {
+    font-family: "JetBrains Mono", Consolas, Menlo, Monaco, monospace;
+    font-size: 8.5pt;
+  }
+
+  pre {
+    background: #0f172a;
+    color: #f8fafc;
+    padding: 12px 14px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 8px 0 14px 0;
+    line-height: 1.4;
+  }
+
+  code.inline {
+    background: #f1f5f9;
+    color: #0f172a;
+    padding: 2px 5px;
+    border-radius: 4px;
+    border: 1px solid #e2e8f0;
+  }
+
+  /* Callout Boxes */
+  .callout {
+    background: #f0fdf4;
+    border-left: 4px solid #16a34a;
+    padding: 12px 14px;
+    border-radius: 0 6px 6px 0;
+    margin: 14px 0;
+    font-size: 9.5pt;
+  }
+  .callout-info {
+    background: #eff6ff;
+    border-left-color: #2563eb;
+  }
+  .callout-warning {
+    background: #fffbeb;
+    border-left-color: #f59e0b;
+  }
+
+  /* Flow Diagram Containers */
+  .diagram-container {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px 0;
+    text-align: center;
+  }
+
+  .diagram-container svg {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Page Sections */
+  .endpoint-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    margin-bottom: 14px;
+    background: #ffffff;
+    overflow: hidden;
+  }
+  .endpoint-header {
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: monospace;
+    font-size: 10pt;
+    font-weight: 600;
+  }
+  .endpoint-body {
+    padding: 10px 14px;
+    font-size: 9.5pt;
+  }
+  .endpoint-desc {
+    margin-bottom: 8px;
+    color: #475569;
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= COVER PAGE ================= -->
+<div class="cover-page">
+  <div class="cover-header">
+    <span class="cover-badge">Architecture &amp; Engineering Specification &bull; Phase 3 Autonomous AI</span>
+    <h1 class="cover-title">Enterprise Inventory &amp; Order Management System</h1>
+    <p class="cover-subtitle">Complete REST API Specification, AI Predictive &amp; Autonomous Architecture &amp; Page Flow Directory</p>
+  </div>
+
+  <div class="cover-meta-grid">
+    <div class="meta-card">
+      <h4>System Architecture</h4>
+      <p>Clean Architecture / DDD / Autonomous AI Suite</p>
+    </div>
+    <div class="meta-card">
+      <h4>Backend Framework</h4>
+      <p>.NET 10.0 Web API / Entity Framework Core</p>
+    </div>
+    <div class="meta-card">
+      <h4>Frontend Application</h4>
+      <p>Angular Standalone / Signals &amp; Reactive Forms</p>
+    </div>
+    <div class="meta-card">
+      <h4>Security Model</h4>
+      <p>JWT Bearer Authentication &amp; RBAC (4 Roles)</p>
+    </div>
+    <div class="meta-card">
+      <h4>Database &amp; ACID Guarantees</h4>
+      <p>SQL Server with Distributed Concurrency</p>
+    </div>
+    <div class="meta-card">
+      <h4>Release Version</h4>
+      <p>v3.0.0 (Phase 3 Autonomous AI &amp; Operations Release)</p>
+    </div>
+  </div>
+
+  <div class="cover-footer">
+    <span>Enterprise Inventory Management Solution</span>
+    <span>Generated: November 2026 &bull; Confidential &amp; Proprietary</span>
+  </div>
+</div>
+
+<!-- ================= SECTION 1: SYSTEM OVERVIEW ================= -->
+<div>
+  <h1>1. System Overview &amp; Architecture</h1>
+  <p>
+    The <strong>Enterprise Inventory and Order Management System</strong> is an enterprise-grade platform designed for centralized stock tracking across multiple physical warehouses, supplier lifecycle administration, order fulfillment with ACID transactional stock reservations, and automated audit logging.
+  </p>
+
+  <h2>High-Level System Topology</h2>
+  <div class="diagram-container avoid-break">
+    <svg width="680" height="180" viewBox="0 0 680 180" xmlns="http://www.w3.org/2000/svg">
+      <!-- Frontend -->
+      <rect x="20" y="30" width="160" height="120" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+      <text x="100" y="60" font-family="sans-serif" font-size="12" font-weight="bold" fill="#1e40af" text-anchor="middle">Angular SPA (Client)</text>
+      <text x="100" y="85" font-family="sans-serif" font-size="9.5" fill="#475569" text-anchor="middle">Standalone Components</text>
+      <text x="100" y="105" font-family="sans-serif" font-size="9.5" fill="#475569" text-anchor="middle">Signals &amp; Reactive Forms</text>
+      <text x="100" y="125" font-family="sans-serif" font-size="9.5" fill="#475569" text-anchor="middle">JWT Auth Interceptor</text>
+
+      <!-- Arrow 1 -->
+      <path d="M 180 90 L 260 90" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+      <text x="220" y="80" font-family="sans-serif" font-size="8.5" fill="#64748b" text-anchor="middle">HTTPS / JSON</text>
+      <text x="220" y="105" font-family="sans-serif" font-size="8" fill="#64748b" text-anchor="middle">Bearer JWT</text>
+
+      <!-- Backend API -->
+      <rect x="260" y="30" width="170" height="120" rx="8" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
+      <text x="345" y="60" font-family="sans-serif" font-size="12" font-weight="bold" fill="#166534" text-anchor="middle">ASP.NET Core 10 Web API</text>
+      <text x="345" y="85" font-family="sans-serif" font-size="9.5" fill="#475569" text-anchor="middle">CORS &amp; JWT Auth</text>
+      <text x="345" y="105" font-family="sans-serif" font-size="9.5" fill="#475569" text-anchor="middle">UnitOfWork &amp; Services</text>
+      <text x="345" y="125" font-family="sans-serif" font-size="9.5" fill="#475569" text-anchor="middle">Global Exception Filter</text>
+
+      <!-- Arrow 2 -->
+      <path d="M 430 90 L 510 90" stroke="#64748b" stroke-width="2"/>
+      <text x="470" y="80" font-family="sans-serif" font-size="8.5" fill="#64748b" text-anchor="middle">EF Core 10</text>
+      <text x="470" y="105" font-family="sans-serif" font-size="8" fill="#64748b" text-anchor="middle">ACID Tx</text>
+
+      <!-- Database -->
+      <rect x="510" y="30" width="150" height="120" rx="8" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+      <text x="585" y="60" font-family="sans-serif" font-size="12" font-weight="bold" fill="#92400e" text-anchor="middle">SQL Server Database</text>
+      <text x="585" y="85" font-family="sans-serif" font-size="9.5" fill="#475569" text-anchor="middle">ACID Concurrency</text>
+      <text x="585" y="105" font-family="sans-serif" font-size="9.5" fill="#475569" text-anchor="middle">Relational Schema</text>
+      <text x="585" y="125" font-family="sans-serif" font-size="9.5" fill="#475569" text-anchor="middle">Audit Logs Trail</text>
+    </svg>
+  </div>
+
+  <h2>Role-Based Access Control (RBAC) Matrix</h2>
+  <table class="avoid-break">
+    <thead>
+      <tr>
+        <th style="width: 20%;">Role</th>
+        <th style="width: 30%;">Access Scope</th>
+        <th style="width: 50%;">Permitted Operations</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Admin</strong></td>
+        <td>Full System Administration</td>
+        <td>Manage all users, view audit logs, create/update/delete products, configure warehouses, initiate transfers &amp; adjustments, override order states.</td>
+      </tr>
+      <tr>
+        <td><strong>WarehouseManager</strong></td>
+        <td>Warehouse &amp; Stock Operations</td>
+        <td>Perform physical stock adjustments, transfer stock between warehouses, manage product catalog (Create/Update), update order status to Processing/Completed.</td>
+      </tr>
+      <tr>
+        <td><strong>SalesRepresentative</strong></td>
+        <td>Sales &amp; Customer Orders</td>
+        <td>Browse live product inventory across warehouses, create customer sales orders with real-time stock deduction, track order fulfillment, cancel orders.</td>
+      </tr>
+      <tr>
+        <td><strong>Auditor</strong></td>
+        <td>Compliance &amp; Quality Control</td>
+        <td>Read-only inspection of inventory valuation, warehouse levels, stock movement transactions, and full immutable system audit logs.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ================= SECTION 2: REST API REFERENCE ================= -->
+<div class="page-break">
+  <h1>2. Complete REST API Specification</h1>
+  <p>Base URL: <code class="inline">http://localhost:5000/api</code> &bull; Authentication: <code class="inline">Authorization: Bearer &lt;token&gt;</code></p>
+
+  <h2>2.1 Authentication &amp; User Endpoints</h2>
+
+  <div class="endpoint-card avoid-break">
+    <div class="endpoint-header">
+      <span class="badge badge-post">POST</span>
+      <span>/api/auth/login</span>
+      <span class="role-pill">Anonymous</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="endpoint-desc">Validates credentials using BCrypt hash comparison, records user login audit log, and issues a 12-hour signed JWT token with identity and role claims.</div>
+      <strong>Request Body:</strong>
+      <pre>{
+  "username": "admin",
+  "password": "Password123!"
+}</pre>
+      <strong>Response (200 OK):</strong>
+      <pre>{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "expiresAt": "2026-10-23T23:59:59Z",
+  "user": {
+    "id": 1,
+    "username": "admin",
+    "email": "admin@enterprise.com",
+    "fullName": "Enterprise Administrator",
+    "role": "Admin",
+    "isActive": true
+  }
+}</pre>
+    </div>
+  </div>
+
+  <div class="endpoint-card avoid-break">
+    <div class="endpoint-header">
+      <span class="badge badge-get">GET</span>
+      <span>/api/auth/me</span>
+      <span class="role-pill">Authenticated</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="endpoint-desc">Returns the authenticated user profile based on the JWT bearer token claims.</div>
+      <strong>Response (200 OK):</strong> Returns <code class="inline">UserDto</code> object.
+    </div>
+  </div>
+
+  <div class="endpoint-card avoid-break">
+    <div class="endpoint-header">
+      <span class="badge badge-get">GET</span>
+      <span>/api/auth/users</span>
+      <span class="role-pill">Admin</span>
+      <span class="role-pill">Auditor</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="endpoint-desc">Retrieves list of all registered system users and assigned roles.</div>
+    </div>
+  </div>
+
+  <h2>2.2 Dashboard KPI Endpoints</h2>
+
+  <div class="endpoint-card avoid-break">
+    <div class="endpoint-header">
+      <span class="badge badge-get">GET</span>
+      <span>/api/dashboard/summary</span>
+      <span class="role-pill">Authenticated</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="endpoint-desc">Computes executive KPIs including total active products, warehouse count, total inventory asset valuation (cost basis), total sales revenue, low stock count, and recent stock activity.</div>
+      <strong>Response (200 OK):</strong>
+      <pre>{
+  "totalProducts": 142,
+  "totalWarehouses": 4,
+  "lowStockItemCount": 3,
+  "totalStockInventoryValue": 542980.50,
+  "totalSalesRevenue": 128450.00,
+  "recentMovements": [...]
+}</pre>
+    </div>
+  </div>
+</div>
+
+<!-- ================= PRODUCTS & INVENTORY API ================= -->
+<div class="page-break">
+  <h2>2.3 Products Management Endpoints</h2>
+
+  <table class="avoid-break">
+    <thead>
+      <tr>
+        <th style="width: 15%;">Method</th>
+        <th style="width: 30%;">Route</th>
+        <th style="width: 25%;">Authorized Roles</th>
+        <th style="width: 30%;">Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/products</code></td>
+        <td><span class="role-pill">All Authenticated</span></td>
+        <td>Search &amp; paginate catalog. Query params: <code>searchTerm</code>, <code>categoryId</code>, <code>supplierId</code>, <code>pageNumber</code>, <code>pageSize</code>.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/products/{id}</code></td>
+        <td><span class="role-pill">All Authenticated</span></td>
+        <td>Fetch single product with category and supplier metadata.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-post">POST</span></td>
+        <td><code>/api/products</code></td>
+        <td><span class="role-pill">Admin</span> <span class="role-pill">WarehouseMgr</span></td>
+        <td>Create product with SKU validation, safety reorder thresholds, and unit price.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-put">PUT</span></td>
+        <td><code>/api/products/{id}</code></td>
+        <td><span class="role-pill">Admin</span> <span class="role-pill">WarehouseMgr</span></td>
+        <td>Update product details, cost price, and safety stock levels.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-delete">DELETE</span></td>
+        <td><code>/api/products/{id}</code></td>
+        <td><span class="role-pill">Admin</span></td>
+        <td>Soft delete product (enforces referential integrity check against orders).</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>2.4 Multi-Warehouse Inventory &amp; Stock Movement Endpoints</h2>
+
+  <table class="avoid-break">
+    <thead>
+      <tr>
+        <th style="width: 15%;">Method</th>
+        <th style="width: 30%;">Route</th>
+        <th style="width: 25%;">Authorized Roles</th>
+        <th style="width: 30%;">Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/inventory</code></td>
+        <td><span class="role-pill">All Authenticated</span></td>
+        <td>Paginated inventory matrix across warehouses. Supports <code>lowStockOnly=true</code> filter.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/inventory/low-stock-alerts</code></td>
+        <td><span class="role-pill">All Authenticated</span></td>
+        <td>Returns all inventory records where <code>QuantityOnHand &lt;= ReorderPoint</code>.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-post">POST</span></td>
+        <td><code>/api/inventory/adjust</code></td>
+        <td><span class="role-pill">Admin</span> <span class="role-pill">WarehouseMgr</span></td>
+        <td>Adjust physical stock with reason audit (Cycle count, Damaged, Replenishment).</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-post">POST</span></td>
+        <td><code>/api/inventory/transfer</code></td>
+        <td><span class="role-pill">Admin</span> <span class="role-pill">WarehouseMgr</span></td>
+        <td>ACID inter-warehouse transfer: atomically deducts source warehouse and credits target warehouse.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/inventory/movements</code></td>
+        <td><span class="role-pill">All Authenticated</span></td>
+        <td>Historical audit ledger of all stock movement events (IN, OUT, TRANSFER, ADJUST).</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout callout-info avoid-break">
+    <strong>ACID Concurrency Guarantee:</strong> Inventory transfers execute within an explicit database transaction isolation scope. If the source warehouse lacks sufficient available stock or any database failure occurs, the entire transaction is rolled back with zero partial deduction.
+  </div>
+</div>
+
+<!-- ================= ORDERS & CATALOG API ================= -->
+<div class="page-break">
+  <h2>2.5 Orders &amp; Fulfillment Endpoints</h2>
+
+  <div class="endpoint-card avoid-break">
+    <div class="endpoint-header">
+      <span class="badge badge-post">POST</span>
+      <span>/api/orders</span>
+      <span class="role-pill">Admin</span>
+      <span class="role-pill">SalesRepresentative</span>
+      <span class="role-pill">WarehouseMgr</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="endpoint-desc">Atomically places a customer sales order and deducts available warehouse inventory in a single ACID transaction. If stock is insufficient, returns <code>400 Bad Request</code> with specific product availability.</div>
+      <strong>Request Body:</strong>
+      <pre>{
+  "customerName": "Acme Logistics Inc.",
+  "customerEmail": "orders@acme.com",
+  "shippingAddress": "100 Industrial Parkway, Chicago IL",
+  "warehouseId": 1,
+  "items": [
+    { "productId": 4, "quantity": 10, "unitPrice": 49.99 }
+  ]
+}</pre>
+    </div>
+  </div>
+
+  <table class="avoid-break">
+    <thead>
+      <tr>
+        <th style="width: 15%;">Method</th>
+        <th style="width: 30%;">Route</th>
+        <th style="width: 25%;">Authorized Roles</th>
+        <th style="width: 30%;">Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/orders</code></td>
+        <td><span class="role-pill">All Authenticated</span></td>
+        <td>Paginated orders listing with customer name, status, and order total.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/orders/{id}</code></td>
+        <td><span class="role-pill">All Authenticated</span></td>
+        <td>Fetch order details including individual line items and fulfillment history.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-put">PUT</span></td>
+        <td><code>/api/orders/{id}/status</code></td>
+        <td><span class="role-pill">Admin</span> <span class="role-pill">WarehouseMgr</span> <span class="role-pill">Sales</span></td>
+        <td>Advance order status through lifecycle: <code>Pending &rarr; Processing &rarr; Completed</code>.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-post">POST</span></td>
+        <td><code>/api/orders/{id}/cancel</code></td>
+        <td><span class="role-pill">Admin</span> <span class="role-pill">Sales</span> <span class="role-pill">WarehouseMgr</span></td>
+        <td>Cancels order and <strong>automatically replenishes</strong> deducted inventory back to warehouse stock.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>2.6 Suppliers, Categories, Warehouses &amp; Audit Endpoints</h2>
+
+  <table class="avoid-break">
+    <thead>
+      <tr>
+        <th style="width: 15%;">Method</th>
+        <th style="width: 30%;">Route</th>
+        <th style="width: 25%;">Authorized Roles</th>
+        <th style="width: 30%;">Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/categories</code></td>
+        <td><span class="role-pill">All Authenticated</span></td>
+        <td>List all product categories (Electronics, Apparel, Equipment, etc.).</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-post">POST</span></td>
+        <td><code>/api/categories</code></td>
+        <td><span class="role-pill">Admin</span> <span class="role-pill">WarehouseMgr</span></td>
+        <td>Create new product category.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/suppliers</code></td>
+        <td><span class="role-pill">All Authenticated</span></td>
+        <td>List suppliers with contact info, lead times, and reliability metrics.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-post">POST</span></td>
+        <td><code>/api/suppliers</code></td>
+        <td><span class="role-pill">Admin</span> <span class="role-pill">WarehouseMgr</span></td>
+        <td>Add new vendor profile with procurement terms.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/warehouses</code></td>
+        <td><span class="role-pill">All Authenticated</span></td>
+        <td>List active distribution centers with capacity thresholds.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/audit</code></td>
+        <td><span class="role-pill">Admin</span> <span class="role-pill">Auditor</span></td>
+        <td>Query immutable audit trail records with before/after state diffs and IP tracking.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>2.7 Phase 1: AI Document Ingestion &amp; Copilot Endpoints</h2>
+  <table class="avoid-break">
+    <thead>
+      <tr>
+        <th style="width: 15%;">Method</th>
+        <th style="width: 32%;">Route</th>
+        <th style="width: 23%;">Authorized Roles</th>
+        <th style="width: 30%;">Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="badge badge-post">POST</span></td>
+        <td><code>/api/ai/ingest-document</code></td>
+        <td><span class="role-pill">Admin</span> <span class="role-pill">WarehouseMgr</span> <span class="role-pill">Sales</span></td>
+        <td>Multimodal OCR document extraction for POs and invoices with catalog SKU reconciliation.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/ai/document-samples</code></td>
+        <td><span class="role-pill">All Authenticated</span></td>
+        <td>Retrieve pre-seeded commercial invoices and PO demo documents for 1-click intake testing.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-post">POST</span></td>
+        <td><code>/api/ai/copilot/query</code></td>
+        <td><span class="role-pill">All Authenticated</span></td>
+        <td>Natural language conversational AI queries over orders, stock, runways, and suppliers.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>2.8 Phase 2: Predictive Demand Forecasting &amp; Restock Endpoints</h2>
+  <table class="avoid-break">
+    <thead>
+      <tr>
+        <th style="width: 15%;">Method</th>
+        <th style="width: 35%;">Route</th>
+        <th style="width: 20%;">Authorized Roles</th>
+        <th style="width: 30%;">Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/inventory/forecasting/summary</code></td>
+        <td><span class="role-pill">All Authenticated</span></td>
+        <td>AI KPI summary: critical stockouts, restock recommended items, and overstock tied-up capital.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/inventory/forecasting/recommendations</code></td>
+        <td><span class="role-pill">All Authenticated</span></td>
+        <td>Dynamic Safety Stock, Dynamic ROP, 30-day burn rate, and suggested replenish order quantities.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/inventory/forecasting/overstock</code></td>
+        <td><span class="role-pill">All Authenticated</span></td>
+        <td>Detect stagnant &gt;60-day carrying inventory with exact tied-up capital & rebalance recommendations.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/inventory/forecasting/product/{{id}}</code></td>
+        <td><span class="role-pill">All Authenticated</span></td>
+        <td>Single-item runway prediction, burn rate, and projected stockout date.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-post">POST</span></td>
+        <td><code>/api/inventory/forecasting/generate-po-draft</code></td>
+        <td><span class="role-pill">Admin</span> <span class="role-pill">WarehouseMgr</span></td>
+        <td>Batch restock PO generator aggregating recommended quantities and supplier lead times.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>2.9 Phase 2: AI Catalog Intelligence &amp; Deduplication Endpoints</h2>
+  <table class="avoid-break">
+    <thead>
+      <tr>
+        <th style="width: 15%;">Method</th>
+        <th style="width: 35%;">Route</th>
+        <th style="width: 20%;">Authorized Roles</th>
+        <th style="width: 30%;">Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="badge badge-post">POST</span></td>
+        <td><code>/api/products/intelligence/detect-duplicates</code></td>
+        <td><span class="role-pill">Admin</span> <span class="role-pill">WarehouseMgr</span></td>
+        <td>Tokenized Jaccard similarity and normalized SKU check on product title input.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-post">POST</span></td>
+        <td><code>/api/products/intelligence/suggest-category</code></td>
+        <td><span class="role-pill">Admin</span> <span class="role-pill">WarehouseMgr</span></td>
+        <td>AI automatic category prediction based on product title and technical specifications.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/products/intelligence/audit</code></td>
+        <td><span class="role-pill">Admin</span> <span class="role-pill">WarehouseMgr</span></td>
+        <td>Full catalog hygiene scan returning duplicate pairs, category misclassifications, and quality score.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>2.10 Phase 3: Intelligent Audit &amp; Shrinkage / Anomaly Radar Endpoints</h2>
+  <table class="avoid-break">
+    <thead>
+      <tr>
+        <th style="width: 15%;">Method</th>
+        <th style="width: 35%;">Route</th>
+        <th style="width: 20%;">Authorized Roles</th>
+        <th style="width: 30%;">Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/audit/anomalies/radar</code></td>
+        <td><span class="role-pill">All Authenticated</span></td>
+        <td>Unsupervised anomaly radar scanning off-hours adjustments, abnormal cancellations, rapid shrinkage spikes, and transfer discrepancies with financial exposure scoring.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-post">POST</span></td>
+        <td><code>/api/audit/anomalies/resolve</code></td>
+        <td><span class="role-pill">Admin</span> <span class="role-pill">Auditor</span> <span class="role-pill">WarehouseMgr</span></td>
+        <td>Acknowledge and resolve flagged security/shrinkage anomaly with supervisor audit notes and timestamped sign-off.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>2.11 Phase 3: Supplier Reliability &amp; Autonomous Procurement Policy Endpoints</h2>
+  <table class="avoid-break">
+    <thead>
+      <tr>
+        <th style="width: 15%;">Method</th>
+        <th style="width: 35%;">Route</th>
+        <th style="width: 20%;">Authorized Roles</th>
+        <th style="width: 30%;">Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/suppliers/intelligence/scorecards</code></td>
+        <td><span class="role-pill">All Authenticated</span></td>
+        <td>Evaluates supplier performance: Reliability Index, Tier categorization (🥇 Gold, 🥈 Silver, ⚠️ High Risk), lead-time variance, on-time probabilities, and failover alternate vendors.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/suppliers/intelligence/autonomous-policies</code></td>
+        <td><span class="role-pill">All Authenticated</span></td>
+        <td>List all active autonomous replenishment policies governing automated PO drafting triggers and budget caps.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-post">POST</span></td>
+        <td><code>/api/suppliers/intelligence/toggle-policy</code></td>
+        <td><span class="role-pill">Admin</span> <span class="role-pill">WarehouseMgr</span></td>
+        <td>Toggle autonomous replenishment policy on/off (pause or resume self-executing purchasing engine).</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ================= SECTION 3: FRONTEND PAGE FLOW ================= -->
+<div class="page-break">
+  <h1>3. Frontend Application Architecture &amp; Page Flow</h1>
+  <p>
+    The client single-page application is structured with Angular Standalone components, responsive navigation shell, client-side route guards, and reactive state management.
+  </p>
+
+  <h2>3.1 User Journey &amp; Navigation Flow</h2>
+  <div class="diagram-container avoid-break">
+    <svg width="680" height="240" viewBox="0 0 680 240" xmlns="http://www.w3.org/2000/svg">
+      <!-- Login Node -->
+      <rect x="20" y="80" width="110" height="60" rx="6" fill="#fef2f2" stroke="#dc2626" stroke-width="2"/>
+      <text x="75" y="105" font-family="sans-serif" font-size="11" font-weight="bold" fill="#991b1b" text-anchor="middle">/login</text>
+      <text x="75" y="125" font-family="sans-serif" font-size="8.5" fill="#475569" text-anchor="middle">Public Auth</text>
+
+      <!-- Auth Guard -->
+      <polygon points="180,110 230,80 280,110 230,140" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+      <text x="230" y="108" font-family="sans-serif" font-size="9" font-weight="bold" fill="#1e40af" text-anchor="middle">authGuard</text>
+      <text x="230" y="120" font-family="sans-serif" font-size="7.5" fill="#475569" text-anchor="middle">Valid JWT?</text>
+
+      <!-- Arrow Login to Guard -->
+      <path d="M 130 110 L 180 110" stroke="#64748b" stroke-width="2"/>
+
+      <!-- Dashboard Node -->
+      <rect x="330" y="80" width="130" height="60" rx="6" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
+      <text x="395" y="105" font-family="sans-serif" font-size="11" font-weight="bold" fill="#166534" text-anchor="middle">/dashboard</text>
+      <text x="395" y="125" font-family="sans-serif" font-size="8.5" fill="#475569" text-anchor="middle">KPIs &amp; Alerts</text>
+
+      <!-- Arrow Guard to Dashboard -->
+      <path d="M 280 110 L 330 110" stroke="#16a34a" stroke-width="2"/>
+      <text x="305" y="103" font-family="sans-serif" font-size="8" fill="#16a34a" text-anchor="middle">Yes</text>
+
+      <!-- Feature Pages Grid -->
+      <!-- Products -->
+      <rect x="520" y="15" width="130" height="40" rx="4" fill="#f8fafc" stroke="#3b82f6" stroke-width="1.5"/>
+      <text x="585" y="38" font-family="sans-serif" font-size="9.5" font-weight="bold" fill="#1e40af" text-anchor="middle">/products (Catalog)</text>
+
+      <!-- Inventory -->
+      <rect x="520" y="65" width="130" height="40" rx="4" fill="#f8fafc" stroke="#3b82f6" stroke-width="1.5"/>
+      <text x="585" y="88" font-family="sans-serif" font-size="9.5" font-weight="bold" fill="#1e40af" text-anchor="middle">/inventory (Stock)</text>
+
+      <!-- Orders -->
+      <rect x="520" y="115" width="130" height="40" rx="4" fill="#f8fafc" stroke="#3b82f6" stroke-width="1.5"/>
+      <text x="585" y="138" font-family="sans-serif" font-size="9.5" font-weight="bold" fill="#1e40af" text-anchor="middle">/orders (Sales)</text>
+
+      <!-- Suppliers -->
+      <rect x="520" y="165" width="130" height="40" rx="4" fill="#f8fafc" stroke="#3b82f6" stroke-width="1.5"/>
+      <text x="585" y="188" font-family="sans-serif" font-size="9.5" font-weight="bold" fill="#1e40af" text-anchor="middle">/suppliers (Vendors)</text>
+
+      <!-- Audit -->
+      <rect x="520" y="210" width="130" height="25" rx="4" fill="#fdf2f8" stroke="#db2777" stroke-width="1.5"/>
+      <text x="585" y="226" font-family="sans-serif" font-size="8.5" font-weight="bold" fill="#9d174d" text-anchor="middle">/audit (Role: Admin/Audit)</text>
+
+      <!-- Connectors from Dashboard to Features -->
+      <path d="M 460 100 L 490 100 L 490 35 L 520 35" stroke="#94a3b8" stroke-width="1.5"/>
+      <path d="M 460 105 L 490 105 L 490 85 L 520 85" stroke="#94a3b8" stroke-width="1.5"/>
+      <path d="M 460 115 L 490 115 L 490 135 L 520 135" stroke="#94a3b8" stroke-width="1.5"/>
+      <path d="M 460 120 L 490 120 L 490 185 L 520 185" stroke="#94a3b8" stroke-width="1.5"/>
+      <path d="M 460 125 L 480 125 L 480 222 L 520 222" stroke="#db2777" stroke-width="1.5"/>
+    </svg>
+  </div>
+
+  <h2>3.2 Page-by-Page Specifications &amp; Interaction Workflows</h2>
+
+  <div class="avoid-break">
+    <h3>1. Login Page (<code class="inline">/login</code>)</h3>
+    <ul>
+      <li><strong>Purpose:</strong> Authenticate user and initialize secure session.</li>
+      <li><strong>Features:</strong> Form validation, quick-fill role buttons (Admin, Warehouse Mgr, Sales Rep, Auditor), authentication progress indicator.</li>
+      <li><strong>Post-Login Navigation:</strong> On HTTP 200, saves token to <code class="inline">localStorage</code>, populates user signal in <code class="inline">AuthService</code>, and redirects immediately to <code class="inline">/dashboard</code>.</li>
+    </ul>
+  </div>
+
+  <div class="avoid-break">
+    <h3>2. Operations Dashboard (<code class="inline">/dashboard</code>)</h3>
+    <ul>
+      <li><strong>Purpose:</strong> Executive command center for inventory status, predictive alerts, and operational health.</li>
+      <li><strong>KPI Cards:</strong> Total Active Products, Inventory Asset Valuation ($), Low-Stock Items Count, Active Warehouses Count, Cumulative Sales Revenue ($).</li>
+      <li><strong>Phase 2 AI Predictive Card:</strong> Surfaces critical stockout risks (&lt;3 days), restock recommended counts, overstocked items, and exact tied-up carrying capital ($).</li>
+      <li><strong>Quick Actions:</strong> Primary triggers for <code class="inline">+ New Order</code>, <code class="inline">Adjust Stock</code>, and <code class="inline">Explore Restock Recommendations</code>.</li>
+    </ul>
+  </div>
+
+  <div class="avoid-break">
+    <h3>3. Products Catalog (<code class="inline">/products</code>)</h3>
+    <ul>
+      <li><strong>Purpose:</strong> Central product registry and AI catalog hygiene control.</li>
+      <li><strong>Interactions:</strong> Real-time text search (SKU/Title), Category dropdown filter, Supplier dropdown filter.</li>
+      <li><strong>Phase 2 AI Catalog Deduplication:</strong> Global 1-click catalog scanner identifying duplicate SKUs, Jaccard token overlap, and category misclassifications with overall Quality Score.</li>
+      <li><strong>Phase 2 AI Auto-Pick:</strong> Natural language semantic classifier suggests optimum product category automatically when creating/editing products.</li>
+      <li><strong>Modals:</strong> "Add Product", "Edit Product", and "AI Catalog Deduplication Audit" dialogs with live validation.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ================= PAGE FLOW CONT. ================= -->
+<div class="page-break">
+  <div class="avoid-break">
+    <h3>4. Multi-Warehouse Inventory (<code class="inline">/inventory</code>)</h3>
+    <ul>
+      <li><strong>Purpose:</strong> Physical stock visibility, AI predictive replenishment, and inter-warehouse movement orchestration.</li>
+      <li><strong>Phase 2 AI Demand Forecasting Tab:</strong> Analyzes 30-day order velocity to compute Dynamic Safety Stock (<code class="inline">SS = ⌈1.65 × √(Lead Time) × max(1, Daily Burn × 0.7)⌉</code>) and Dynamic Reorder Point (<code class="inline">ROP = (Daily Burn × Lead Time) + SS</code>).</li>
+      <li><strong>Phase 2 Restock PO Generator:</strong> 1-click batch Purchase Order builder with item breakdown, estimated costs, lead times, and instant replenishment execution.</li>
+      <li><strong>Phase 2 Overstock & Dead Stock View:</strong> Identifies capital tied up in excess items (&gt;60 days runway) with 1-click rebalancing transfer actions.</li>
+      <li><strong>Warehouse Selector:</strong> Filter stock and forecasts by physical distribution facility.</li>
+      <li><strong>Stock Adjustment &amp; Transfer Modals:</strong> Allows warehouse staff to modify quantities or transfer inventory with ACID transactional atomicity.</li>
+      <li><strong>Movement Ledger:</strong> Historical log of every stock alteration with timestamp, delta, and operating user.</li>
+    </ul>
+  </div>
+
+  <div class="avoid-break">
+    <h3>5. Order Management &amp; Fulfillment (<code class="inline">/orders</code>)</h3>
+    <ul>
+      <li><strong>Purpose:</strong> Sales order intake, AI invoice/PO document processing, and delivery tracking.</li>
+      <li><strong>Phase 1 AI Document Ingestion:</strong> Multimodal OCR scanner supporting PDF, PNG, and invoice images with automated line-item token parsing and catalog SKU matching.</li>
+      <li><strong>Status Workflow:</strong> Visual pill badges indicate state: <span class="badge badge-get">Pending</span> &rarr; <span class="badge badge-put">Processing</span> &rarr; <span class="badge badge-post">Completed</span> or <span class="badge badge-delete">Cancelled</span>.</li>
+      <li><strong>Order Creation Dialog:</strong> Dynamic line-item builder with customer details. Automatically verifies warehouse stock levels before submission.</li>
+      <li><strong>Order Cancellation Flow:</strong> Prompts for cancellation reason and triggers the automatic inventory restock routine on the backend.</li>
+    </ul>
+  </div>
+
+  <div class="avoid-break">
+    <h3>6. Suppliers Directory &amp; Autonomous Procurement (<code class="inline">/suppliers</code>)</h3>
+    <ul>
+      <li><strong>Purpose:</strong> Vendor relationship management, reliability evaluation, and autonomous replenishment policies.</li>
+      <li><strong>Phase 3 AI Supplier Scorecards:</strong> Evaluates historical lead-time variance (&plusmn;days), on-time delivery probability, and assigns vendor tiers (🥇 Gold Preferred, 🥈 Silver, ⚠️ High Risk).</li>
+      <li><strong>Phase 3 Failover Routing:</strong> Recommends alternate secondary vendors to mitigate supply-chain disruptions.</li>
+      <li><strong>Phase 3 Autonomous Procurement Policies:</strong> Interactive self-governing replenishment rules that automatically draft purchase orders when runway breaches safety boundaries (≤ threshold days, PO cap limits).</li>
+      <li><strong>Directory Actions:</strong> Add new vendor profiles, edit terms, and filter supplied products.</li>
+    </ul>
+  </div>
+
+  <div class="avoid-break">
+    <h3>7. System Audit Trail &amp; AI Shrinkage Radar (<code class="inline">/audit</code>)</h3>
+    <ul>
+      <li><strong>Purpose:</strong> Compliance oversight, regulatory traceability, and automated shrinkage detection (restricted to Admin, Auditor, and Warehouse Managers).</li>
+      <li><strong>Phase 3 AI Shrinkage &amp; Anomaly Radar:</strong> Unsupervised heuristic anomaly scanner evaluating off-hours stock adjustments, abnormal cancellations, rapid shrinkage spikes, and transfer discrepancies.</li>
+      <li><strong>Executive Risk Metrics:</strong> Overall Network Risk level, Active Flagged Anomalies, Critical Exposure ($), and Discrepancy Units.</li>
+      <li><strong>1-Click Investigation &amp; Resolution:</strong> In-app supervisor audit modal allowing warehouse supervisors to verify physical counts, record resolution notes, and resolve security flags.</li>
+      <li><strong>Compliance Audit Logs Tab:</strong> Immutable record of user actions, payload diffs, and IP addresses.</li>
+    </ul>
+  </div>
+
+  <div class="avoid-break">
+    <h3>8. Global Enterprise AI Copilot (Phase 1, 2 &amp; 3 Autonomous AI)</h3>
+    <ul>
+      <li><strong>Purpose:</strong> Conversational intelligence assistant accessible across all screens via slide-out drawer.</li>
+      <li><strong>Capabilities:</strong> Answers plain-English inquiries about shrinkage anomalies, supplier reliability scorecards, autonomous replenishment, predictive demand forecasting, dynamic restock runway, overstock capital, warehouse valuations, and catalog deduplication.</li>
+      <li><strong>Deep Navigation:</strong> Generates interactive action buttons directly navigating to relevant application views and opening workflows (e.g., <code>/audit?tab=anomalies</code>, <code>/suppliers?view=ai-scorecard</code>, <code>/inventory?tab=forecast</code>).</li>
+    </ul>
+  </div>
+
+  <h2>3.3 Order Fulfillment &amp; Stock Deduction Lifecycle</h2>
+  <div class="diagram-container avoid-break">
+    <svg width="680" height="150" viewBox="0 0 680 150" xmlns="http://www.w3.org/2000/svg">
+      <!-- Step 1 -->
+      <rect x="20" y="40" width="120" height="70" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+      <text x="80" y="65" font-family="sans-serif" font-size="10" font-weight="bold" fill="#1e40af" text-anchor="middle">1. Order Submitted</text>
+      <text x="80" y="85" font-family="sans-serif" font-size="8.5" fill="#475569" text-anchor="middle">Customer details &amp;</text>
+      <text x="80" y="100" font-family="sans-serif" font-size="8.5" fill="#475569" text-anchor="middle">Line item quantities</text>
+
+      <path d="M 140 75 L 180 75" stroke="#64748b" stroke-width="2"/>
+
+      <!-- Step 2 -->
+      <rect x="180" y="40" width="130" height="70" rx="6" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.5"/>
+      <text x="245" y="65" font-family="sans-serif" font-size="10" font-weight="bold" fill="#92400e" text-anchor="middle">2. Stock Verification</text>
+      <text x="245" y="85" font-family="sans-serif" font-size="8.5" fill="#475569" text-anchor="middle">Pessimistic check</text>
+      <text x="245" y="100" font-family="sans-serif" font-size="8.5" fill="#475569" text-anchor="middle">Available &gt;= Req?</text>
+
+      <path d="M 310 75 L 350 75" stroke="#64748b" stroke-width="2"/>
+
+      <!-- Step 3 -->
+      <rect x="350" y="40" width="140" height="70" rx="6" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5"/>
+      <text x="420" y="65" font-family="sans-serif" font-size="10" font-weight="bold" fill="#166534" text-anchor="middle">3. ACID Deduction</text>
+      <text x="420" y="85" font-family="sans-serif" font-size="8.5" fill="#475569" text-anchor="middle">Reserve stock</text>
+      <text x="420" y="100" font-family="sans-serif" font-size="8.5" fill="#475569" text-anchor="middle">Emit StockMovement</text>
+
+      <path d="M 490 75 L 530 75" stroke="#64748b" stroke-width="2"/>
+
+      <!-- Step 4 -->
+      <rect x="530" y="40" width="130" height="70" rx="6" fill="#faf5ff" stroke="#9333ea" stroke-width="1.5"/>
+      <text x="595" y="65" font-family="sans-serif" font-size="10" font-weight="bold" fill="#6b21a8" text-anchor="middle">4. Order Confirmed</text>
+      <text x="595" y="85" font-family="sans-serif" font-size="8.5" fill="#475569" text-anchor="middle">Order: Pending</text>
+      <text x="595" y="100" font-family="sans-serif" font-size="8.5" fill="#475569" text-anchor="middle">Audit record stored</text>
+    </svg>
+  </div>
+</div>
+
+<!-- ================= SECTION 4: ERROR HANDLING & CONCLUSION ================= -->
+<div class="page-break">
+  <h1>4. Error Handling &amp; Architectural Standards</h1>
+
+  <h2>Standard RFC 9110 Error Response Structure</h2>
+  <p>
+    All HTTP exception scenarios (validation faults, missing resources, unauthorized attempts, concurrency conflicts) return a structured JSON response managed by the centralized <code class="inline">ExceptionHandlingMiddleware</code>:
+  </p>
+  <pre>{
+  "status": 400,
+  "title": "Insufficient Stock",
+  "detail": "Requested 50 units of Wireless Keyboard, but only 12 are available in Central Warehouse.",
+  "errors": {
+    "productId": 4,
+    "productName": "Wireless Keyboard",
+    "availableQuantity": 12,
+    "requestedQuantity": 50
+  },
+  "timestamp": "2026-10-23T06:45:00.123Z"
+}</pre>
+
+  <h2>HTTP Status Code Mapping</h2>
+  <table class="avoid-break">
+    <thead>
+      <tr>
+        <th style="width: 15%;">Status Code</th>
+        <th style="width: 30%;">Title</th>
+        <th style="width: 55%;">Trigger Scenario</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>200 OK</strong></td>
+        <td>Success</td>
+        <td>Query succeeded or entity updated.</td>
+      </tr>
+      <tr>
+        <td><strong>201 Created</strong></td>
+        <td>Resource Created</td>
+        <td>Product, category, order, or supplier created with <code class="inline">Location</code> header.</td>
+      </tr>
+      <tr>
+        <td><strong>204 No Content</strong></td>
+        <td>No Content</td>
+        <td>Deletion completed successfully or preflight response.</td>
+      </tr>
+      <tr>
+        <td><strong>400 Bad Request</strong></td>
+        <td>Validation / Business Rule</td>
+        <td>Insufficient inventory, invalid SKU, duplicate identifier.</td>
+      </tr>
+      <tr>
+        <td><strong>401 Unauthorized</strong></td>
+        <td>Authentication Missing</td>
+        <td>Missing, expired, or invalid JWT Bearer token.</td>
+      </tr>
+      <tr>
+        <td><strong>403 Forbidden</strong></td>
+        <td>Insufficient Role</td>
+        <td>Authenticated user does not possess required role claim.</td>
+      </tr>
+      <tr>
+        <td><strong>404 Not Found</strong></td>
+        <td>Resource Not Found</td>
+        <td>Target entity ID does not exist in the database.</td>
+      </tr>
+      <tr>
+        <td><strong>409 Conflict</strong></td>
+        <td>Concurrency Conflict</td>
+        <td>Simultaneous modification detected on same inventory row.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout callout-warning avoid-break">
+    <strong>Security Note:</strong> Passwords are never stored or logged in plain text. All user passwords are salted and hashed using BCrypt. JWT secret keys are stored securely in backend configuration with minimum 256-bit cryptographic strength.
+  </div>
+
+  <div style="margin-top: 40px; text-align: center; color: #94a3b8; font-size: 9pt;">
+    &mdash; End of Technical Specification Document &mdash;
+  </div>
+</div>
+
+</body>
+</html>
+`;
+
+const htmlPath = path.join('C:', 'Task', 'EnterpriseInventoryManagement', 'Enterprise_Inventory_API_and_Page_Flow_Documentation.html');
+const pdfPath = path.join('C:', 'Task', 'EnterpriseInventoryManagement', 'Enterprise_Inventory_API_and_Page_Flow_Documentation.pdf');
+
+fs.writeFileSync(htmlPath, htmlContent, 'utf-8');
+console.log('HTML documentation written to: ' + htmlPath);
+
+const { execFileSync } = require('child_process');
+const chromePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+
+console.log('Generating PDF via Chrome...');
+try {
+  const args = [
+    '--headless',
+    '--disable-gpu',
+    '--run-all-compositor-stages-before-draw',
+    '--print-to-pdf=' + pdfPath,
+    htmlPath
+  ];
+  execFileSync(chromePath, args);
+  const stats = fs.statSync(pdfPath);
+  console.log('SUCCESS: PDF successfully generated! Size: ' + stats.size + ' bytes at ' + pdfPath);
+} catch (err) {
+  console.error('Error generating PDF:', err);
+}

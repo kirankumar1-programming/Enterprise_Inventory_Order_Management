@@ -1,6 +1,7 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
+using EnterpriseInventory.Core.Enums;
 
 namespace EnterpriseInventory.Core.Entities;
 

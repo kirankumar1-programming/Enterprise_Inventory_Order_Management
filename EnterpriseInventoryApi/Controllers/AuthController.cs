@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using EnterpriseInventory.Application.DTOs;
-using EnterpriseInventory.Application.Services;
+using EnterpriseInventory_Application.DTOs;
+using EnterpriseInventory_Application.Services;
 using EnterpriseInventory.Core.Enums;
 
 namespace EnterpriseInventoryApi.Controllers

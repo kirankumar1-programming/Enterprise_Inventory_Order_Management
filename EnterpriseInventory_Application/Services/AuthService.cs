@@ -1,4 +1,4 @@
-﻿using System.IdentityModel.Tokens.Jwt;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
@@ -165,3 +165,5 @@ namespace EnterpriseInventory_Application.Services
             return (token, expiresAt);
         }
     }
+
+}
