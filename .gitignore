@@ -49,3 +49,9 @@ artifacts/
 appsettings.*.local.json
 secrets.json
 .env
+
+# SQLite local databases
+*.db
+*.db-shm
+*.db-wal
+

@@ -50,6 +50,14 @@ public class EnterpriseInventoryDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => new { e.ProductId, e.WarehouseId }).IsUnique();
+            if (Database.IsSqlServer())
+            {
+                entity.Property(e => e.RowVersion).IsRowVersion();
+            }
+            else
+            {
+                entity.Property(e => e.RowVersion).IsConcurrencyToken();
+            }
 
             entity.HasOne(e => e.Product)
                 .WithMany(p => p.Inventories)

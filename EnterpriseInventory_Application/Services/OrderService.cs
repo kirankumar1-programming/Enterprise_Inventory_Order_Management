@@ -21,11 +21,16 @@ public class OrderService : IOrderService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IRealTimeNotificationService _realTimeNotification;
 
-    public OrderService(IUnitOfWork unitOfWork, ICurrentUserService currentUserService)
+    public OrderService(
+        IUnitOfWork unitOfWork, 
+        ICurrentUserService currentUserService,
+        IRealTimeNotificationService realTimeNotification)
     {
         _unitOfWork = unitOfWork;
         _currentUserService = currentUserService;
+        _realTimeNotification = realTimeNotification;
     }
 
     public async Task<PagedResult<OrderDto>> GetOrdersAsync(OrderFilterParams filter)
@@ -96,7 +101,8 @@ public class OrderService : IOrderService
 
     /// <summary>
     /// Creates an order with ACID Transaction, stock availability validation,
-    /// atomic stock deduction, and optimistic concurrency protection against overselling.
+    /// atomic stock deduction, optimistic concurrency protection against overselling,
+    /// and real-time broadcasting to connected clients.
     /// </summary>
     public async Task<OrderDto> CreateOrderAsync(CreateOrderDto dto)
     {
@@ -111,8 +117,12 @@ public class OrderService : IOrderService
             throw new NotFoundException("Warehouse", dto.WarehouseId);
         }
 
+        var stockUpdateEvents = new List<RealTimeStockUpdateEvent>();
+        var alertEvents = new List<RealTimeAlertEvent>();
+        OrderDto createdResult;
+
         // Execute in ACID database transaction
-        return await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        createdResult = await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
             // Pre-load all products and their warehouse inventory
             var productIds = dto.Items.Select(i => i.ProductId).Distinct().ToList();
@@ -140,6 +150,17 @@ public class OrderService : IOrderService
                 if (!inventories.TryGetValue(item.ProductId, out var inventory) || inventory.AvailableQuantity < item.Quantity)
                 {
                     int available = inventory?.AvailableQuantity ?? 0;
+                    // Trigger real-time alert for insufficient stock rejection
+                    _ = _realTimeNotification.BroadcastAlertAsync(new RealTimeAlertEvent
+                    {
+                        AlertType = "InsufficientStockAttempt",
+                        Title = "Insufficient Stock Rejection",
+                        Message = $"Order attempt rejected: '{product.Name}' requested {item.Quantity} units, but only {available} available in {warehouse.Name}.",
+                        ProductId = item.ProductId,
+                        WarehouseId = dto.WarehouseId,
+                        Timestamp = DateTime.UtcNow
+                    });
+
                     throw new InsufficientStockException(item.ProductId, product.Name, available, item.Quantity);
                 }
             }
@@ -168,6 +189,7 @@ public class OrderService : IOrderService
             {
                 var product = products[item.ProductId];
                 var inventory = inventories[item.ProductId];
+                int prevQuantity = inventory.Quantity;
 
                 // Deduct inventory
                 inventory.Quantity -= item.Quantity;
@@ -197,6 +219,36 @@ public class OrderService : IOrderService
                     Notes = $"Stock deducted for order {orderNumber}.",
                     CreatedByUserId = _currentUserService.UserId
                 });
+
+                // Prepare real-time update event
+                stockUpdateEvents.Add(new RealTimeStockUpdateEvent
+                {
+                    ProductId = item.ProductId,
+                    ProductSKU = product.SKU,
+                    ProductName = product.Name,
+                    WarehouseId = dto.WarehouseId,
+                    WarehouseName = warehouse.Name,
+                    PreviousQuantity = prevQuantity,
+                    NewQuantity = inventory.Quantity,
+                    ChangeQuantity = -item.Quantity,
+                    AvailableQuantity = inventory.AvailableQuantity,
+                    Reason = $"Order {orderNumber} placed",
+                    Timestamp = DateTime.UtcNow
+                });
+
+                // Check for low stock threshold
+                if (inventory.AvailableQuantity <= product.ReorderLevel)
+                {
+                    alertEvents.Add(new RealTimeAlertEvent
+                    {
+                        AlertType = "LowStock",
+                        Title = "Low Stock Alert",
+                        Message = $"Product '{product.Name}' ({product.SKU}) has reached low stock: {inventory.AvailableQuantity} units remaining in {warehouse.Name} (Reorder level: {product.ReorderLevel}).",
+                        ProductId = product.Id,
+                        WarehouseId = dto.WarehouseId,
+                        Timestamp = DateTime.UtcNow
+                    });
+                }
             }
 
             order.TotalAmount = totalAmount;
@@ -223,21 +275,59 @@ public class OrderService : IOrderService
             catch (DbUpdateConcurrencyException)
             {
                 // Concurrency conflict occurred: Another concurrent request modified the inventory row
+                _ = _realTimeNotification.BroadcastAlertAsync(new RealTimeAlertEvent
+                {
+                    AlertType = "ConcurrencyConflict",
+                    Title = "Concurrent Order Race Condition Detected",
+                    Message = $"A race condition occurred for warehouse stock. Concurrency token conflict resolved safely.",
+                    WarehouseId = dto.WarehouseId,
+                    Timestamp = DateTime.UtcNow
+                });
+
                 throw new ConcurrencyConflictException("A concurrent order was placed for this stock. Please refresh and check current stock availability.");
             }
 
             return await GetOrderByIdAsync(order.Id);
         });
+
+        // Broadcast real-time notifications after successful transaction commit
+        foreach (var evt in stockUpdateEvents)
+        {
+            await _realTimeNotification.BroadcastStockUpdateAsync(evt);
+        }
+        foreach (var alert in alertEvents)
+        {
+            await _realTimeNotification.BroadcastAlertAsync(alert);
+        }
+
+        await _realTimeNotification.BroadcastOrderEventAsync(new RealTimeOrderEvent
+        {
+            OrderId = createdResult.Id,
+            OrderNumber = createdResult.OrderNumber,
+            CustomerName = createdResult.CustomerName,
+            TotalAmount = createdResult.TotalAmount,
+            Status = createdResult.Status.ToString(),
+            Action = "Created",
+            ItemCount = createdResult.Items.Count,
+            Timestamp = DateTime.UtcNow
+        });
+
+        return createdResult;
     }
 
     /// <summary>
-    /// Cancels an order and restores deducted stock to the warehouse inventory.
+    /// Cancels an order, restores deducted stock to warehouse inventory atomically,
+    /// logs the movement, writes audit trail, and broadcasts real-time replenishment events.
     /// </summary>
     public async Task<OrderDto> CancelOrderAsync(int id, string? reason)
     {
-        return await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        var stockRestoreEvents = new List<RealTimeStockUpdateEvent>();
+        OrderDto cancelledResult;
+
+        cancelledResult = await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
             var order = await _unitOfWork.Orders.Query()
+                .Include(o => o.Warehouse)
                 .Include(o => o.Items)
                     .ThenInclude(i => i.Product)
                 .FirstOrDefaultAsync(o => o.Id == id);
@@ -266,6 +356,8 @@ public class OrderService : IOrderService
                 {
                     var inventory = await _unitOfWork.Inventories.Query()
                         .FirstOrDefaultAsync(i => i.ProductId == item.ProductId && i.WarehouseId == order.WarehouseId);
+
+                    int prevQty = inventory?.Quantity ?? 0;
 
                     if (inventory == null)
                     {
@@ -297,6 +389,21 @@ public class OrderService : IOrderService
                         Notes = $"Stock restored from cancelled order. Reason: {reason ?? "Customer cancellation"}",
                         CreatedByUserId = _currentUserService.UserId
                     });
+
+                    stockRestoreEvents.Add(new RealTimeStockUpdateEvent
+                    {
+                        ProductId = item.ProductId,
+                        ProductSKU = item.Product?.SKU ?? string.Empty,
+                        ProductName = item.Product?.Name ?? string.Empty,
+                        WarehouseId = order.WarehouseId,
+                        WarehouseName = order.Warehouse?.Name ?? string.Empty,
+                        PreviousQuantity = prevQty,
+                        NewQuantity = inventory.Quantity,
+                        ChangeQuantity = item.Quantity,
+                        AvailableQuantity = inventory.AvailableQuantity,
+                        Reason = $"Order {order.OrderNumber} cancelled. Stock restored. Reason: {reason ?? "Customer cancellation"}",
+                        Timestamp = DateTime.UtcNow
+                    });
                 }
             }
 
@@ -319,6 +426,27 @@ public class OrderService : IOrderService
             await _unitOfWork.SaveChangesAsync();
             return await GetOrderByIdAsync(order.Id);
         });
+
+        // Broadcast real-time stock restorations
+        foreach (var evt in stockRestoreEvents)
+        {
+            await _realTimeNotification.BroadcastStockUpdateAsync(evt);
+        }
+
+        await _realTimeNotification.BroadcastOrderEventAsync(new RealTimeOrderEvent
+        {
+            OrderId = cancelledResult.Id,
+            OrderNumber = cancelledResult.OrderNumber,
+            CustomerName = cancelledResult.CustomerName,
+            TotalAmount = cancelledResult.TotalAmount,
+            Status = OrderStatus.Cancelled.ToString(),
+            Action = "Cancelled",
+            Reason = reason,
+            ItemCount = cancelledResult.Items.Count,
+            Timestamp = DateTime.UtcNow
+        });
+
+        return cancelledResult;
     }
 
     public async Task<OrderDto> UpdateOrderStatusAsync(int id, UpdateOrderStatusDto dto)
@@ -350,7 +478,22 @@ public class OrderService : IOrderService
         });
 
         await _unitOfWork.SaveChangesAsync();
-        return await GetOrderByIdAsync(order.Id);
+        var result = await GetOrderByIdAsync(order.Id);
+
+        await _realTimeNotification.BroadcastOrderEventAsync(new RealTimeOrderEvent
+        {
+            OrderId = order.Id,
+            OrderNumber = order.OrderNumber,
+            CustomerName = order.CustomerName,
+            TotalAmount = order.TotalAmount,
+            Status = order.Status.ToString(),
+            Action = "StatusUpdated",
+            Reason = dto.Note,
+            ItemCount = result.Items.Count,
+            Timestamp = DateTime.UtcNow
+        });
+
+        return result;
     }
 
     private static OrderDto MapToDto(Order o)
@@ -384,4 +527,3 @@ public class OrderService : IOrderService
         };
     }
 }
-

@@ -23,11 +23,16 @@ public class InventoryService : IInventoryService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IRealTimeNotificationService _realTimeNotification;
 
-    public InventoryService(IUnitOfWork unitOfWork, ICurrentUserService currentUserService)
+    public InventoryService(
+        IUnitOfWork unitOfWork, 
+        ICurrentUserService currentUserService,
+        IRealTimeNotificationService realTimeNotification)
     {
         _unitOfWork = unitOfWork;
         _currentUserService = currentUserService;
+        _realTimeNotification = realTimeNotification;
     }
 
     public async Task<IEnumerable<InventoryDto>> GetInventoryByWarehouseAsync(int warehouseId)
@@ -120,12 +125,17 @@ public class InventoryService : IInventoryService
             throw new BusinessRuleValidationException("Adjustment quantity cannot be zero.");
         }
 
-        return await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        RealTimeStockUpdateEvent? updateEvt = null;
+        RealTimeAlertEvent? alertEvt = null;
+
+        var result = await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
             var inventory = await _unitOfWork.Inventories.Query()
                 .Include(i => i.Product)
                 .Include(i => i.Warehouse)
                 .FirstOrDefaultAsync(i => i.ProductId == dto.ProductId && i.WarehouseId == dto.WarehouseId);
+
+            int prevQty = inventory?.Quantity ?? 0;
 
             if (inventory == null)
             {
@@ -144,6 +154,12 @@ public class InventoryService : IInventoryService
                 };
                 await _unitOfWork.Inventories.AddAsync(inventory);
                 await _unitOfWork.SaveChangesAsync();
+
+                // Re-include for proper navigation properties
+                inventory = await _unitOfWork.Inventories.Query()
+                    .Include(i => i.Product)
+                    .Include(i => i.Warehouse)
+                    .FirstAsync(i => i.Id == inventory.Id);
             }
             else
             {
@@ -184,8 +200,48 @@ public class InventoryService : IInventoryService
             });
 
             await _unitOfWork.SaveChangesAsync();
+
+            updateEvt = new RealTimeStockUpdateEvent
+            {
+                ProductId = inventory.ProductId,
+                ProductSKU = inventory.Product?.SKU ?? string.Empty,
+                ProductName = inventory.Product?.Name ?? string.Empty,
+                WarehouseId = inventory.WarehouseId,
+                WarehouseName = inventory.Warehouse?.Name ?? string.Empty,
+                PreviousQuantity = prevQty,
+                NewQuantity = inventory.Quantity,
+                ChangeQuantity = dto.AdjustmentQuantity,
+                AvailableQuantity = inventory.AvailableQuantity,
+                Reason = $"Stock Adjustment: {dto.Reason}",
+                Timestamp = DateTime.UtcNow
+            };
+
+            if (inventory.Product != null && inventory.AvailableQuantity <= inventory.Product.ReorderLevel)
+            {
+                alertEvt = new RealTimeAlertEvent
+                {
+                    AlertType = "LowStock",
+                    Title = "Low Stock Alert",
+                    Message = $"Product '{inventory.Product.Name}' has {inventory.AvailableQuantity} units left in {inventory.Warehouse?.Name} (Reorder level: {inventory.Product.ReorderLevel}).",
+                    ProductId = inventory.ProductId,
+                    WarehouseId = inventory.WarehouseId,
+                    Timestamp = DateTime.UtcNow
+                };
+            }
+
             return MapToDto(inventory);
         });
+
+        if (updateEvt != null)
+        {
+            await _realTimeNotification.BroadcastStockUpdateAsync(updateEvt);
+        }
+        if (alertEvt != null)
+        {
+            await _realTimeNotification.BroadcastAlertAsync(alertEvt);
+        }
+
+        return result;
     }
 
     public async Task<bool> TransferStockAsync(StockTransferDto dto)
@@ -199,11 +255,15 @@ public class InventoryService : IInventoryService
             throw new BusinessRuleValidationException("Transfer quantity must be greater than zero.");
         }
 
-        return await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        RealTimeStockUpdateEvent? sourceEvt = null;
+        RealTimeStockUpdateEvent? destEvt = null;
+
+        var success = await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
             // Fetch source inventory with concurrency row lock
             var sourceInventory = await _unitOfWork.Inventories.Query()
                 .Include(i => i.Product)
+                .Include(i => i.Warehouse)
                 .FirstOrDefaultAsync(i => i.ProductId == dto.ProductId && i.WarehouseId == dto.SourceWarehouseId);
 
             if (sourceInventory == null || sourceInventory.AvailableQuantity < dto.Quantity)
@@ -213,6 +273,8 @@ public class InventoryService : IInventoryService
                 throw new InsufficientStockException(dto.ProductId, pName, avail, dto.Quantity);
             }
 
+            int prevSourceQty = sourceInventory.Quantity;
+
             // Deduct from source
             sourceInventory.Quantity -= dto.Quantity;
             sourceInventory.UpdatedAt = DateTime.UtcNow;
@@ -220,7 +282,11 @@ public class InventoryService : IInventoryService
 
             // Fetch or create destination inventory
             var destInventory = await _unitOfWork.Inventories.Query()
+                .Include(i => i.Product)
+                .Include(i => i.Warehouse)
                 .FirstOrDefaultAsync(i => i.ProductId == dto.ProductId && i.WarehouseId == dto.DestinationWarehouseId);
+
+            int prevDestQty = destInventory?.Quantity ?? 0;
 
             if (destInventory == null)
             {
@@ -232,6 +298,12 @@ public class InventoryService : IInventoryService
                     ReservedQuantity = 0
                 };
                 await _unitOfWork.Inventories.AddAsync(destInventory);
+                await _unitOfWork.SaveChangesAsync();
+
+                destInventory = await _unitOfWork.Inventories.Query()
+                    .Include(i => i.Product)
+                    .Include(i => i.Warehouse)
+                    .FirstAsync(i => i.Id == destInventory.Id);
             }
             else
             {
@@ -281,8 +353,44 @@ public class InventoryService : IInventoryService
             });
 
             await _unitOfWork.SaveChangesAsync();
+
+            sourceEvt = new RealTimeStockUpdateEvent
+            {
+                ProductId = sourceInventory.ProductId,
+                ProductSKU = sourceInventory.Product?.SKU ?? string.Empty,
+                ProductName = sourceInventory.Product?.Name ?? string.Empty,
+                WarehouseId = sourceInventory.WarehouseId,
+                WarehouseName = sourceInventory.Warehouse?.Name ?? string.Empty,
+                PreviousQuantity = prevSourceQty,
+                NewQuantity = sourceInventory.Quantity,
+                ChangeQuantity = -dto.Quantity,
+                AvailableQuantity = sourceInventory.AvailableQuantity,
+                Reason = $"Stock Transfer Out to {destInventory.Warehouse?.Name ?? $"Warehouse #{dto.DestinationWarehouseId}"}",
+                Timestamp = DateTime.UtcNow
+            };
+
+            destEvt = new RealTimeStockUpdateEvent
+            {
+                ProductId = destInventory.ProductId,
+                ProductSKU = destInventory.Product?.SKU ?? string.Empty,
+                ProductName = destInventory.Product?.Name ?? string.Empty,
+                WarehouseId = destInventory.WarehouseId,
+                WarehouseName = destInventory.Warehouse?.Name ?? string.Empty,
+                PreviousQuantity = prevDestQty,
+                NewQuantity = destInventory.Quantity,
+                ChangeQuantity = dto.Quantity,
+                AvailableQuantity = destInventory.AvailableQuantity,
+                Reason = $"Stock Transfer In from {sourceInventory.Warehouse?.Name ?? $"Warehouse #{dto.SourceWarehouseId}"}",
+                Timestamp = DateTime.UtcNow
+            };
+
             return true;
         });
+
+        if (sourceEvt != null) await _realTimeNotification.BroadcastStockUpdateAsync(sourceEvt);
+        if (destEvt != null) await _realTimeNotification.BroadcastStockUpdateAsync(destEvt);
+
+        return success;
     }
 
     public async Task<PagedResult<StockMovementDto>> GetStockMovementsAsync(int? productId, int? warehouseId, PaginationParams pagination)
@@ -347,4 +455,3 @@ public class InventoryService : IInventoryService
         };
     }
 }
-
