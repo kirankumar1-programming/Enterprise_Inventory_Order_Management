@@ -1,10 +1,12 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { InventoryApiService } from '../../core/services/inventory-api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { NotificationService } from '../../core/services/notification.service';
+import { RealtimeInventoryService } from '../../core/services/realtime-inventory.service';
 import {
   InventoryItem, Warehouse, Product, LowStockAlert,
   StockMovement, PagedResult, RestockRecommendation, OverstockAlert, ProductForecastSummary, StockUrgencyLevel,
@@ -56,6 +58,12 @@ import {
 
       <!-- TAB 1: Stock Quantities -->
       <div *ngIf="activeTab === 'stock'" class="tab-pane">
+        <!-- Real-Time Sync Banner -->
+        <div class="live-sync-banner">
+          <span class="pulse-dot-green"></span>
+          <span><strong>Real-Time Live Sync Active:</strong> Inventory balances and low-stock alerts automatically synchronize upon order confirmation, cancellation, or warehouse receipt.</span>
+        </div>
+
         <!-- Warehouse Filter Pills -->
         <div class="warehouse-pills">
           <button
@@ -92,7 +100,7 @@ import {
                 </tr>
               </thead>
               <tbody>
-                <tr *ngFor="let item of inventoryPaged?.items">
+                <tr *ngFor="let item of inventoryPaged?.items" [class.row-flash]="isFlashing(item.productId)">
                   <td>
                     <span class="code-badge">{{ item.productSKU }}</span>
                   </td>
@@ -826,6 +834,43 @@ import {
     .pill.active { background: var(--primary); border-color: var(--primary); color: #fff; }
 
     .table-card { padding: 0; overflow: hidden; }
+
+    .live-sync-banner {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      color: #166534;
+      padding: 0.65rem 1rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.8125rem;
+      margin-bottom: 1rem;
+    }
+    .pulse-dot-green {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #16a34a;
+      box-shadow: 0 0 8px #16a34a;
+      flex-shrink: 0;
+      animation: pulseGreen 1.8s infinite;
+    }
+    @keyframes pulseGreen {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    .row-flash {
+      animation: liveFlash 2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    @keyframes liveFlash {
+      0% { background-color: rgba(34, 197, 94, 0.4); }
+      50% { background-color: rgba(34, 197, 94, 0.15); }
+      100% { background-color: transparent; }
+    }
+
     .avail-qty { font-size: 1rem; font-weight: 700; }
     .font-bold { font-weight: 700; }
     .text-sm { font-size: 0.8125rem; }
@@ -920,10 +965,14 @@ export class InventoryViewComponent implements OnInit {
   transferForm: FormGroup;
   isSubmitting = false;
 
+  flashingProductIds = new Set<number>();
+  private subs: Subscription[] = [];
+
   constructor(
     private api: InventoryApiService,
     public auth: AuthService,
     private notify: NotificationService,
+    private realtime: RealtimeInventoryService,
     private fb: FormBuilder,
     private route: ActivatedRoute,
     private cdr: ChangeDetectorRef
@@ -961,6 +1010,39 @@ export class InventoryViewComponent implements OnInit {
     this.loadLowStock();
     this.loadMovements();
     this.loadForecasting();
+
+    this.subs.push(
+      this.realtime.stockUpdated$.subscribe(evt => {
+        if (this.inventoryPaged?.items) {
+          const item = this.inventoryPaged.items.find(i => i.productId === evt.productId && i.warehouseId === evt.warehouseId);
+          if (item) {
+            item.quantity = evt.newQuantity;
+            item.availableQuantity = evt.availableQuantity;
+            this.triggerFlash(item.productId);
+          } else {
+            this.loadInventories();
+          }
+          this.loadLowStock();
+          this.cdr.markForCheck();
+        }
+      })
+    );
+  }
+
+  ngOnDestroy(): void {
+    this.subs.forEach(s => s.unsubscribe());
+  }
+
+  triggerFlash(productId: number): void {
+    this.flashingProductIds.add(productId);
+    setTimeout(() => {
+      this.flashingProductIds.delete(productId);
+      this.cdr.markForCheck();
+    }, 2000);
+  }
+
+  isFlashing(productId: number): boolean {
+    return this.flashingProductIds.has(productId);
   }
 
   setTab(tab: 'stock' | 'alerts' | 'forecast' | 'movements') {

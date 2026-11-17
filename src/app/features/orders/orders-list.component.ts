@@ -1,9 +1,11 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, FormArray, Validators } from '@angular/forms';
+import { Subscription } from 'rxjs';
 import { InventoryApiService } from '../../core/services/inventory-api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { NotificationService } from '../../core/services/notification.service';
+import { RealtimeInventoryService } from '../../core/services/realtime-inventory.service';
 import {
   Order, Warehouse, Product, InventoryItem,
   PagedResult, OrderStatus, ExtractedOrderDocument, ExtractedLineItem, SampleDocumentOption
@@ -1068,11 +1070,13 @@ export class OrdersListComponent implements OnInit {
   stagedDoc: ExtractedOrderDocument | null = null;
   isIngesting = false;
   isDraggingOver = false;
+  private subs: Subscription[] = [];
 
   constructor(
     private api: InventoryApiService,
     public auth: AuthService,
     private notify: NotificationService,
+    private realtime: RealtimeInventoryService,
     private fb: FormBuilder,
     private cdr: ChangeDetectorRef
   ) {
@@ -1094,6 +1098,34 @@ export class OrdersListComponent implements OnInit {
     this.loadLookups();
     this.loadOrders();
     this.loadSampleDocuments();
+
+    this.subs.push(
+      this.realtime.stockUpdated$.subscribe(evt => {
+        const whId = this.orderForm.get('warehouseId')?.value;
+        if (whId === evt.warehouseId) {
+          this.warehouseInventoryMap.set(evt.productId, evt.availableQuantity);
+        }
+        if (this.stagedDoc && this.stagedDoc.suggestedWarehouseId === evt.warehouseId) {
+          this.stagedDoc.items.forEach(itm => {
+            if (itm.matchedProductId === evt.productId) {
+              itm.warehouseAvailableStock = evt.availableQuantity;
+              itm.isStockSufficient = itm.warehouseAvailableStock >= itm.quantity;
+            }
+          });
+        }
+        this.cdr.markForCheck();
+      })
+    );
+
+    this.subs.push(
+      this.realtime.orderEvents$.subscribe(() => {
+        this.loadOrders();
+      })
+    );
+  }
+
+  ngOnDestroy(): void {
+    this.subs.forEach(s => s.unsubscribe());
   }
 
   loadLookups() {

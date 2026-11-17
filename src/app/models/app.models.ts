@@ -540,4 +540,159 @@ export interface TogglePolicyRequest {
   enabled: boolean;
 }
 
+// ==========================================
+// Real-Time Events & Scenarios Models
+// ==========================================
+
+export interface RealTimeStockUpdateEvent {
+  productId: number;
+  productSKU: string;
+  productName: string;
+  warehouseId: number;
+  warehouseName: string;
+  previousQuantity: number;
+  newQuantity: number;
+  changeQuantity: number;
+  availableQuantity: number;
+  reason: string;
+  timestamp: string;
+}
+
+export interface RealTimeOrderEvent {
+  orderId: number;
+  orderNumber: string;
+  customerName: string;
+  totalAmount: number;
+  status: string;
+  action: string;
+  reason?: string;
+  itemCount: number;
+  timestamp: string;
+}
+
+export interface RealTimeAlertEvent {
+  alertType: string;
+  title: string;
+  message: string;
+  productId?: number;
+  warehouseId?: number;
+  timestamp: string;
+}
+
+export interface InsufficientStockScenarioRequest {
+  warehouseId: number;
+  productId: number;
+  requestedQuantity: number;
+}
+
+export interface InsufficientStockScenarioResult {
+  scenarioName: string;
+  productSKU: string;
+  productName: string;
+  warehouseName: string;
+  availableStock: number;
+  requestedQuantity: number;
+  deficit: number;
+  validationTriggered: boolean;
+  exceptionType: string;
+  validationMessage: string;
+  stockPreserved: boolean;
+  stockBefore: number;
+  stockAfter: number;
+  executionTimeMs: number;
+  timestamp: string;
+}
+
+export interface OrderCancellationScenarioRequest {
+  orderId?: number;
+  reason?: string;
+}
+
+export interface RestoredItemDetail {
+  productId: number;
+  productName: string;
+  productSKU: string;
+  stockBefore: number;
+  quantityRestored: number;
+  stockAfter: number;
+  isRestoredCorrectly: boolean;
+}
+
+export interface OrderCancellationScenarioResult {
+  scenarioName: string;
+  orderId: number;
+  orderNumber: string;
+  cancellationReason: string;
+  previousStatus: string;
+  newStatus: string;
+  warehouseName: string;
+  allItemsRestored: boolean;
+  restoredItems: RestoredItemDetail[];
+  ledgerReference: string;
+  ledgerMovementType: string;
+  executionTimeMs: number;
+  timestamp: string;
+}
+
+export interface ConcurrentOrdersScenarioRequest {
+  warehouseId: number;
+  productId: number;
+  concurrentUsersCount: number;
+  quantityPerOrder: number;
+  setStockTo?: number;
+}
+
+export interface ConcurrentOrderThreadResult {
+  threadId: number;
+  customerName: string;
+  success: boolean;
+  status: string;
+  orderNumber?: string;
+  quantityDeducted: number;
+  message: string;
+  durationMs: number;
+}
+
+export interface ConcurrentOrdersScenarioResult {
+  scenarioName: string;
+  productSKU: string;
+  productName: string;
+  warehouseName: string;
+  initialStock: number;
+  concurrentBuyers: number;
+  quantityPerBuyer: number;
+  totalDemand: number;
+  successfulOrdersCount: number;
+  rejectedOrdersCount: number;
+  totalStockDeducted: number;
+  finalStock: number;
+  noOversellingGuaranteed: boolean;
+  totalExecutionTimeMs: number;
+  threadResults: ConcurrentOrderThreadResult[];
+  timestamp: string;
+}
+
+export interface AutomaticStockUpdateScenarioRequest {
+  warehouseId: number;
+  productId: number;
+  quantityChange: number;
+  reason?: string;
+}
+
+export interface AutomaticStockUpdateScenarioResult {
+  scenarioName: string;
+  productSKU: string;
+  productName: string;
+  warehouseName: string;
+  previousStock: number;
+  quantityChanged: number;
+  newStock: number;
+  availableStock: number;
+  updateReason: string;
+  signalRBroadcastPushed: boolean;
+  executionTimeMs: number;
+  timestamp: string;
+}
+
+
 

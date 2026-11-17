@@ -99,7 +99,7 @@ import { NotificationService } from '../../../core/services/notification.service
       letter-spacing: 0.05em;
       margin-bottom: 1rem;
     }
-    .login-header h2 {
+    .login-header h2 { 
       font-size: 1.625rem;
       text-decoration: underline red;
       color: var(--text-main);

@@ -6,6 +6,7 @@ import { InventoryViewComponent } from './features/inventory/inventory-view.comp
 import { OrdersListComponent } from './features/orders/orders-list.component';
 import { SuppliersListComponent } from './features/suppliers/suppliers-list.component';
 import { AuditLogsComponent } from './features/audit/audit-logs.component';
+import { RealtimeScenariosComponent } from './features/scenarios/realtime-scenarios.component';
 import { authGuard, roleGuard } from './core/guards/auth.guard';
 
 export const routes: Routes = [
@@ -14,6 +15,7 @@ export const routes: Routes = [
   { path: 'products', component: ProductsListComponent, canActivate: [authGuard] },
   { path: 'inventory', component: InventoryViewComponent, canActivate: [authGuard] },
   { path: 'orders', component: OrdersListComponent, canActivate: [authGuard] },
+  { path: 'scenarios', component: RealtimeScenariosComponent, canActivate: [authGuard] },
   { path: 'suppliers', component: SuppliersListComponent, canActivate: [authGuard] },
   {
     path: 'audit',

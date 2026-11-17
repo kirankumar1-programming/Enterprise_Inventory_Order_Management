@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AuthService } from '../../core/services/auth.service';
+import { RealtimeInventoryService } from '../../core/services/realtime-inventory.service';
 
 @Component({
   selector: 'app-navbar',
@@ -10,6 +11,10 @@ import { AuthService } from '../../core/services/auth.service';
     <header class="navbar">
       <div class="navbar-left">
         <span class="environment-badge">PRODUCTION</span>
+        <span class="realtime-pill" [class.connected]="realtime.isConnected$ | async">
+          <span class="dot"></span>
+          {{ (realtime.isConnected$ | async) ? 'Live Sync Active' : 'Live Sync Connecting' }}
+        </span>
         <span class="system-time">{{ today | date:'mediumDate' }}</span>
       </div>
 
@@ -49,6 +54,38 @@ import { AuthService } from '../../core/services/auth.service';
       padding: 0.2rem 0.5rem;
       border-radius: var(--radius-sm);
     }
+    .realtime-pill {
+      font-size: 0.6875rem;
+      font-weight: 700;
+      padding: 0.2rem 0.6rem;
+      border-radius: 9999px;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      background: #fef2f2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+      transition: all 0.2s;
+    }
+    .realtime-pill.connected {
+      background: #f0fdf4;
+      color: #166534;
+      border-color: #bbf7d0;
+    }
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .realtime-pill.connected .dot {
+      animation: pulse 1.8s infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+      100% { opacity: 1; transform: scale(1); }
+    }
     .system-time {
       font-size: 0.8125rem;
       color: var(--text-muted);
@@ -82,5 +119,5 @@ import { AuthService } from '../../core/services/auth.service';
 })
 export class NavbarComponent {
   today = new Date();
-  constructor(public auth: AuthService) {}
+  constructor(public auth: AuthService, public realtime: RealtimeInventoryService) {}
 }

@@ -9,7 +9,11 @@ import {
   DuplicateCheckResponse, CategorySuggestion, CatalogAuditReport, RestockPoDraft,
   ExtractedOrderDocument, SampleDocumentOption, CopilotQueryResponse,
   AnomalyRadarReport, ResolveAnomalyRequest, SupplierIntelligenceReport,
-  AutonomousReorderPolicy, TogglePolicyRequest
+  AutonomousReorderPolicy, TogglePolicyRequest,
+  InsufficientStockScenarioRequest, InsufficientStockScenarioResult,
+  OrderCancellationScenarioRequest, OrderCancellationScenarioResult,
+  ConcurrentOrdersScenarioRequest, ConcurrentOrdersScenarioResult,
+  AutomaticStockUpdateScenarioRequest, AutomaticStockUpdateScenarioResult
 } from '../../models/app.models';
 
 @Injectable({
@@ -266,6 +270,30 @@ export class InventoryApiService {
 
   toggleAutonomousPolicy(request: TogglePolicyRequest): Observable<{ success: boolean; enabled: boolean }> {
     return this.http.post<{ success: boolean; enabled: boolean }>(`${this.baseUrl}/suppliers/intelligence/toggle-policy`, request);
+  }
+
+  // ==========================================
+  // Real-Time Scenarios Simulation Endpoints
+  // ==========================================
+
+  runInsufficientStockScenario(request: InsufficientStockScenarioRequest): Observable<InsufficientStockScenarioResult> {
+    return this.http.post<InsufficientStockScenarioResult>(`${this.baseUrl}/scenarios/insufficient-stock`, request);
+  }
+
+  runOrderCancellationScenario(request: OrderCancellationScenarioRequest): Observable<OrderCancellationScenarioResult> {
+    return this.http.post<OrderCancellationScenarioResult>(`${this.baseUrl}/scenarios/order-cancellation`, request);
+  }
+
+  runConcurrentOrdersScenario(request: ConcurrentOrdersScenarioRequest): Observable<ConcurrentOrdersScenarioResult> {
+    return this.http.post<ConcurrentOrdersScenarioResult>(`${this.baseUrl}/scenarios/concurrent-orders`, request);
+  }
+
+  runAutomaticStockUpdateScenario(request: AutomaticStockUpdateScenarioRequest): Observable<AutomaticStockUpdateScenarioResult> {
+    return this.http.post<AutomaticStockUpdateScenarioResult>(`${this.baseUrl}/scenarios/automatic-stock-update`, request);
+  }
+
+  getScenariosOverview(): Observable<any> {
+    return this.http.get<any>(`${this.baseUrl}/scenarios/overview`);
   }
 }
 

@@ -1,63 +1,75 @@
-# Enterprise_Inventory_Order_Management
+# Enterprise Inventory Management - Frontend (Angular)
 
-Enterprise Inventory and Order Management System
+Modern, responsive web application built with **Angular (Standalone Components)**, **TypeScript**, and **Tailwind CSS**, featuring real-time state synchronization via **SignalR WebSockets**.
 
-## Frontend (EnterpriseInventory)
+---
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.2.3.
+## Key Features
 
-## Development server
+- **Live Synchronization via SignalR**: Real-time stock update indicators, animated row-flash notifications (`.row-flash`), low-stock badges, and connection status pill in the navbar (`🟢 Live Sync Active`).
+- **Interactive Scenarios Dashboard (`/scenarios`)**: Dedicated 4-card live simulation control center for:
+  1. Insufficient Stock Validation
+  2. Order Cancellation & Stock Restoration
+  3. High-Concurrency Flash Sale Orders
+  4. Automatic Stock Updates & Event Broadcasting
+- **Multi-Warehouse Inventory Tracking**: Warehouse breakdown tables, cycle count adjustments, and inter-facility stock transfers.
+- **Order Management & Fulfillment**: Real-time line item availability validation, order status tracking, and 1-click order cancellation with restock verification.
+- **Role-Based Navigation & 1-Click Login**: Quick-login role chips for `Admin`, `Manager`, `Sales`, and `Auditor`.
 
-To start a local development server, run:
+---
 
-```bash
-ng serve
+## Frontend Architecture
+
+```
+EnterpriseInventory/src/app/
+├── app.routes.ts                       # Application route definitions (/scenarios, /inventory, /orders...)
+├── core/
+│   ├── guards/                         # AuthGuard, RoleGuard
+│   ├── interceptors/                   # AuthInterceptor (JWT injection), ErrorInterceptor
+│   └── services/
+│       ├── auth.service.ts             # JWT token storage and login/logout state
+│       ├── inventory-api.service.ts    # REST API client
+│       └── realtime-inventory.service.ts # SignalR WebSocket hub connection & observable streams
+├── features/
+│   ├── auth/                           # Login component with 1-click role chips
+│   ├── dashboard/                      # KPI summary cards and low stock alerts
+│   ├── inventory/                      # Multi-warehouse inventory grid with live row-flashes
+│   ├── orders/                         # Order creation and live restock cancellation
+│   ├── products/                       # Catalog management, search, and category filtering
+│   └── scenarios/                      # Interactive Real-Time Scenarios Control Center
+└── shared/
+    ├── navbar/                         # Real-time WebSocket connection badge
+    ├── sidebar/                        # Role-aware navigation drawer
+    └── layout/                         # Main application layout
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+---
 
-## Code scaffolding
+## Running the Frontend
 
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
-
-```bash
-ng generate component component-name
+### Development Server
+```powershell
+npm start
 ```
+Navigate to **`http://localhost:4200`** in your browser. The app connects to the API at `http://localhost:5000`.
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
-
-```bash
-ng generate --help
+### Production Build
+```powershell
+npm run build
 ```
+Build output is generated in the `dist/` folder.
 
-## Building
-
-To build the project run:
-
-```bash
-ng build
+### Running Unit Tests
+```powershell
+npm test
 ```
+Executes unit tests using **Vitest**.
 
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
+---
 
-## Running unit tests
-
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+## Detailed References
+- [Root Architecture & Quick Start Guide](../README.md)
+- [Complete REST & SignalR API Documentation](../docs/API_DOCUMENTATION.md)
+- [Database Design & Concurrency Guide](../docs/DATABASE_DESIGN.md)
+- [Error Handling & Resilience Architecture](../docs/ERROR_HANDLING.md)
+- [Unit Testing Guide](../docs/TESTING_GUIDE.md)
